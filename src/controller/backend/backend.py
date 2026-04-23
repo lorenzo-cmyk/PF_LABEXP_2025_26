@@ -155,9 +155,13 @@ class Backend(app_manager.OSKenApp):
             is_down = bool(ev.msg.desc.state & ofp.OFPPS_LINK_DOWN)
             LOG.info(">>> PORT MODIFY dpid=%s port=%d state=%s",
                      hex(dp.id), port_no, "DOWN" if is_down else "UP")
-            self.topo_mgr.port_modify(dp, port_no, is_down)
             if is_down:
+                # Resolve the link BEFORE port_modify removes it from the graph.
+                # handle_port_down needs to know which link failed so it can
+                # delete affected flows from the switches.
                 self.fault_handler.handle_port_down(dp.id, port_no)
+            else:
+                self.topo_mgr.port_modify(dp, port_no, is_down)
         else:
             LOG.debug("PortStatus: unknown reason=%d dpid=%s port=%d",
                       reason, hex(dp.id), port_no)

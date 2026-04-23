@@ -196,18 +196,25 @@ class FlowInstaller:
         self.delete_flood_rule(dpid)
 
         ofp_parser = dp.ofproto_parser
-        actions = [ofp_parser.OFPActionOutput(port) for port in sorted(flood_ports)]
-        match = ofp_parser.OFPMatch()
+        
+        for in_port in flood_ports:
+            match = ofp_parser.OFPMatch(in_port=in_port)
+            actions = [
+                ofp_parser.OFPActionOutput(port) 
+                for port in sorted(flood_ports) 
+                if port != in_port
+            ]
 
-        self._send_flow_mod(
-            dp,
-            match=match,
-            actions=actions,
-            priority=PRIORITY_FLOOD,
-            idle_timeout=0,
-            hard_timeout=0,
-            cookie=FLOOD_COOKIE_BASE | (dpid & 0xFFFF),
-        )
+            self._send_flow_mod(
+                dp,
+                match=match,
+                actions=actions,
+                priority=PRIORITY_FLOOD,
+                idle_timeout=0,
+                hard_timeout=0,
+                cookie=FLOOD_COOKIE_BASE | (dpid & 0xFFFF),
+            )
+            
         LOG.info(
             "FlowInstaller: flood rule dpid=%s → ports=%s",
             hex(dpid),

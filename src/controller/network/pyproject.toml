@@ -1,9 +1,8 @@
 [project]
 name = "network"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.12"
+description = "Lab Experience SDN Project - Backend (Mininet Virtual Network)"
+requires-python = ">=3.14.4"
 dependencies = [
     "mininet>=2.3.0.dev6",
 ]
-

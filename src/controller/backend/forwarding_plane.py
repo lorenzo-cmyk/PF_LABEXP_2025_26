@@ -58,8 +58,23 @@ class ForwardingPlane:
             LOG.info("Forwarding: dst %s UNKNOWN — will flood (ARP?)", dst_mac)
             return False
 
-        src_dpid = in_dpid
+        src_loc = self.host_tracker.lookup(src_mac)
+        src_dpid = src_loc.dpid if src_loc else in_dpid
         dst_dpid = dst_loc.dpid
+
+        # Only install paths from the source host's switch.  If this packet-in
+        # arrived at an intermediate switch (e.g., because it was flooded before
+        # flow rules existed), computing a path from here would corrupt the
+        # route tracker by overwriting the correct source→destination route.
+        if in_dpid != src_dpid:
+            LOG.debug(
+                "Forwarding: packet-in at dpid=%s but source %s lives on dpid=%s "
+                "— skipping path install (existing flows or flood will deliver)",
+                hex(in_dpid),
+                src_mac,
+                hex(src_dpid),
+            )
+            return True
 
         if src_dpid == dst_dpid:
             LOG.info(

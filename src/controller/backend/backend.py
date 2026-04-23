@@ -225,9 +225,11 @@ class Backend(app_manager.OSKenApp):
         if dst_mac == LLDP_MAC:
             return
 
-        # Broadcast / multicast: flood via spanning tree ports only
+        # Broadcast / multicast: flood via spanning tree ports only.
+        # Exclude in_port from the output set to avoid sending the packet back
+        # to where it came from (the data-plane flood rule does the same).
         if dst_mac == "ff:ff:ff:ff:ff:ff" or int(dst_mac.replace(":", ""), 16) & 1:
-            flood_ports = self.st_mgr.flood_ports(dpid)
+            flood_ports = self.st_mgr.flood_ports(dpid) - {in_port}
             LOG.debug(
                 "PacketIn: BROADCAST %s → %s on dpid=%s port=%d → flood ports=%s",
                 src_mac,

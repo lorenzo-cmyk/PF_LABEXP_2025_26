@@ -53,6 +53,7 @@ class TopologyGraph:
         self._lock = threading.Lock()
         self._edge_ports: set[tuple[int, int]] = set()
         self._switch_ports: dict[int, set[int]] = {}
+        self._known_internal_ports: set[tuple[int, int]] = set()
 
     # -- graph mutations --------------------------------------------------
 
@@ -71,6 +72,9 @@ class TopologyGraph:
             self._graph.remove_node(dpid)
             self._switch_ports.pop(dpid, None)
             self._edge_ports = {ep for ep in self._edge_ports if ep[0] != dpid}
+            self._known_internal_ports = {
+                p for p in self._known_internal_ports if p[0] != dpid
+            }
         LOG.info(
             "Graph: removed switch dpid=%s | switches=%d",
             hex(dpid),
@@ -80,10 +84,15 @@ class TopologyGraph:
     def add_port(self, dpid: int, port_no: int) -> None:
         with self._lock:
             self._switch_ports.setdefault(dpid, set()).add(port_no)
-            self._edge_ports.add((dpid, port_no))
-        LOG.debug(
-            "Graph: added port dpid=%s port=%d (assumed edge)", hex(dpid), port_no
-        )
+            if (dpid, port_no) not in self._known_internal_ports:
+                self._edge_ports.add((dpid, port_no))
+                LOG.debug(
+                    "Graph: added port dpid=%s port=%d (assumed edge)", hex(dpid), port_no
+                )
+            else:
+                LOG.debug(
+                    "Graph: added port dpid=%s port=%d (known link, no edge)", hex(dpid), port_no
+                )
 
     def remove_port(self, dpid: int, port_no: int) -> None:
         removed_links: list[str] = []
@@ -121,6 +130,8 @@ class TopologyGraph:
             self._graph.add_edge(a, b, dpid_a=a, port_a=port_a, dpid_b=b, port_b=port_b)
             self._edge_ports.discard((link.src_dpid, link.src_port))
             self._edge_ports.discard((link.dst_dpid, link.dst_port))
+            self._known_internal_ports.add((link.src_dpid, link.src_port))
+            self._known_internal_ports.add((link.dst_dpid, link.dst_port))
         LOG.info(
             "Graph: added link %s:%d → %s:%d | edges=%d",
             hex(link.src_dpid),
@@ -137,8 +148,10 @@ class TopologyGraph:
                 removed = True
             else:
                 removed = False
-            self._edge_ports.add((link.src_dpid, link.src_port))
-            self._edge_ports.add((link.dst_dpid, link.dst_port))
+            # Never automatically turn broken switch links back into edge ports.
+            # If it's a switch-to-switch link, it stays known as not an edge port
+            # even if the link is currently timed out by LLDP. This prevents
+            # broadcast storms on active switch ports missing LLDP.
         if removed:
             LOG.info(
                 "Graph: removed link %s:%d → %s:%d | edges=%d",

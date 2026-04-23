@@ -187,7 +187,12 @@ class FlowInstaller:
     # ── Flood rules ─────────────────────────────────────────────────────
 
     def install_flood_rules(self, dpid: int, flood_ports: set[int]) -> None:
-        """Install a low-priority rule that floods unmatched traffic to *flood_ports*."""
+        """Install a low-priority rule that floods broadcast traffic to *flood_ports*.
+
+        Matches eth_dst=ff:ff:ff:ff:ff:ff so that only broadcast packets (ARP,
+        DHCP, etc.) are flooded.  Unicast packets fall through to the table-miss
+        rule and are sent to the controller for path computation.
+        """
         dp = self._datapaths.get(dpid)
         if dp is None or not flood_ports:
             return
@@ -196,25 +201,26 @@ class FlowInstaller:
         self.delete_flood_rule(dpid)
 
         ofp_parser = dp.ofproto_parser
-        
-        for in_port in flood_ports:
-            match = ofp_parser.OFPMatch(in_port=in_port)
-            actions = [
-                ofp_parser.OFPActionOutput(port) 
-                for port in sorted(flood_ports) 
-                if port != in_port
-            ]
 
-            self._send_flow_mod(
-                dp,
-                match=match,
-                actions=actions,
-                priority=PRIORITY_FLOOD,
-                idle_timeout=0,
-                hard_timeout=0,
-                cookie=FLOOD_COOKIE_BASE | (dpid & 0xFFFF),
-            )
-            
+        # Single rule matching broadcast destination — no per-input-port rules.
+        # This avoids the in_port-only match bug that would intercept unicast
+        # traffic before the table-miss rule gets a chance to send it to the
+        # controller.
+        match = ofp_parser.OFPMatch(eth_dst="ff:ff:ff:ff:ff:ff")
+        actions = [
+            ofp_parser.OFPActionOutput(port) for port in sorted(flood_ports)
+        ]
+
+        self._send_flow_mod(
+            dp,
+            match=match,
+            actions=actions,
+            priority=PRIORITY_FLOOD,
+            idle_timeout=0,
+            hard_timeout=0,
+            cookie=FLOOD_COOKIE_BASE | (dpid & 0xFFFF),
+        )
+
         LOG.info(
             "FlowInstaller: flood rule dpid=%s → ports=%s",
             hex(dpid),
@@ -228,6 +234,7 @@ class FlowInstaller:
             return
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
+        match = ofp_parser.OFPMatch(eth_dst="ff:ff:ff:ff:ff:ff")
         msg = ofp_parser.OFPFlowMod(
             datapath=dp,
             cookie=FLOOD_COOKIE_BASE | (dpid & 0xFFFF),
@@ -236,6 +243,7 @@ class FlowInstaller:
             table_id=ofp.OFPTT_ALL,
             out_port=ofp.OFPP_ANY,
             out_group=ofp.OFPG_ANY,
+            match=match,
         )
         dp.send_msg(msg)
         LOG.debug("FlowInstaller: deleted flood rule dpid=%s", hex(dpid))

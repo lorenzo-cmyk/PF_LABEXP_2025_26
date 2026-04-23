@@ -30,9 +30,12 @@ class PathComputer:
         with self._lock:
             key = (src_dpid, dst_dpid)
             if key in self._cache:
-                LOG.debug("Path: cache HIT %s → %s: %s",
-                          hex(src_dpid), hex(dst_dpid),
-                          " → ".join(hex(d) for d in self._cache[key]))
+                LOG.debug(
+                    "Path: cache HIT %s → %s: %s",
+                    hex(src_dpid),
+                    hex(dst_dpid),
+                    " → ".join(hex(d) for d in self._cache[key]),
+                )
                 return list(self._cache[key])
 
         g = self.graph.copy_graph()
@@ -51,8 +54,12 @@ class PathComputer:
 
         reverse_path = list(reversed(path))
         path_str = " → ".join(hex(d) for d in path)
-        LOG.info("Path: computed %s → %s: %s (cached both directions)",
-                 hex(src_dpid), hex(dst_dpid), path_str)
+        LOG.info(
+            "Path: computed %s → %s: %s (cached both directions)",
+            hex(src_dpid),
+            hex(dst_dpid),
+            path_str,
+        )
 
         with self._lock:
             self._cache[(src_dpid, dst_dpid)] = path

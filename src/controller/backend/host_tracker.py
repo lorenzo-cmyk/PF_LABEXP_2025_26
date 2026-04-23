@@ -34,22 +34,40 @@ class HostTracker:
             prev = self._table.get(mac)
             if prev is not None:
                 if prev.dpid == dpid and prev.port == port:
-                    LOG.debug("HostTracker: refreshed %s → dpid=%s port=%d", mac, hex(dpid), port)
+                    LOG.debug(
+                        "HostTracker: refreshed %s → dpid=%s port=%d",
+                        mac,
+                        hex(dpid),
+                        port,
+                    )
                 else:
-                    LOG.warning("HostTracker: %s seen at dpid=%s port=%d but already known at "
-                                "dpid=%s port=%d — keeping original (GOAL 1: no mobility)",
-                                mac, hex(dpid), port, hex(prev.dpid), prev.port)
+                    LOG.warning(
+                        "HostTracker: %s seen at dpid=%s port=%d but already known at "
+                        "dpid=%s port=%d — keeping original (GOAL 1: no mobility)",
+                        mac,
+                        hex(dpid),
+                        port,
+                        hex(prev.dpid),
+                        prev.port,
+                    )
                 return False
             self._table[mac] = HostLocation(dpid, port)
-        LOG.info("HostTracker: learned %s → dpid=%s port=%d (new host | total=%d)",
-                 mac, hex(dpid), port, len(self._table))
+        LOG.info(
+            "HostTracker: learned %s → dpid=%s port=%d (new host | total=%d)",
+            mac,
+            hex(dpid),
+            port,
+            len(self._table),
+        )
         return True
 
     def lookup(self, mac: str) -> Optional[HostLocation]:
         with self._lock:
             loc = self._table.get(mac)
         if loc:
-            LOG.debug("HostTracker: lookup %s → dpid=%s port=%d", mac, hex(loc.dpid), loc.port)
+            LOG.debug(
+                "HostTracker: lookup %s → dpid=%s port=%d", mac, hex(loc.dpid), loc.port
+            )
         else:
             LOG.debug("HostTracker: lookup %s → UNKNOWN", mac)
         return loc
@@ -62,8 +80,13 @@ class HostTracker:
                     del self._table[mac]
                     removed.append(mac)
         if removed:
-            LOG.info("HostTracker: removed %d hosts on dpid=%s port=%d: %s",
-                     len(removed), hex(dpid), port, ", ".join(removed))
+            LOG.info(
+                "HostTracker: removed %d hosts on dpid=%s port=%d: %s",
+                len(removed),
+                hex(dpid),
+                port,
+                ", ".join(removed),
+            )
         return removed
 
     @property

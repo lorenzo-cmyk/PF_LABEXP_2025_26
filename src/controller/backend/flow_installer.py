@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from os_ken.controller.controller import Datapath
 
-from os_ken.ofproto import ofproto_v1_3, ofproto_v1_3_parser as parser
 
 from topology import LinkKey, TopologyGraph
 
@@ -37,21 +36,28 @@ class FlowInstaller:
 
     def register_dp(self, dp: Datapath) -> None:
         self._datapaths[dp.id] = dp
-        LOG.info("FlowInstaller: registered datapath dpid=%s | total=%d",
-                 hex(dp.id), len(self._datapaths))
+        LOG.info(
+            "FlowInstaller: registered datapath dpid=%s | total=%d",
+            hex(dp.id),
+            len(self._datapaths),
+        )
 
     def unregister_dp(self, dpid: int) -> None:
         self._datapaths.pop(dpid, None)
-        LOG.info("FlowInstaller: unregistered datapath dpid=%s | total=%d",
-                 hex(dpid), len(self._datapaths))
+        LOG.info(
+            "FlowInstaller: unregistered datapath dpid=%s | total=%d",
+            hex(dpid),
+            len(self._datapaths),
+        )
 
     def get_dp(self, dpid: int) -> Optional[Datapath]:
         return self._datapaths.get(dpid)
 
     # ── Install a unicast path (sink → source) ──────────────────────────
 
-    def install_path(self, path: list[int], src_mac: str, dst_mac: str,
-                     *, is_policy: bool = False) -> list[LinkKey]:
+    def install_path(
+        self, path: list[int], src_mac: str, dst_mac: str, *, is_policy: bool = False
+    ) -> list[LinkKey]:
         """Install flow entries along *path* (list of dpids) for dst_mac.
 
         Installs sink-to-source (last switch first). Returns the list of
@@ -59,8 +65,14 @@ class FlowInstaller:
         """
         timeout = 0 if is_policy else DEFAULT_IDLE_TIMEOUT
         path_str = " → ".join(hex(d) for d in path)
-        LOG.info("FlowInstaller: install_path %s → %s via [%s] (timeout=%d, policy=%s)",
-                 src_mac, dst_mac, path_str, timeout, is_policy)
+        LOG.info(
+            "FlowInstaller: install_path %s → %s via [%s] (timeout=%d, policy=%s)",
+            src_mac,
+            dst_mac,
+            path_str,
+            timeout,
+            is_policy,
+        )
 
         if len(path) < 2:
             # Single-switch path: install direct edge flow
@@ -70,8 +82,12 @@ class FlowInstaller:
                     out_port = self._find_edge_port(path[0], src_mac, dst_mac)
                     if out_port is not None:
                         self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
-                        LOG.info("FlowInstaller: single-switch flow dpid=%s dst=%s port=%d",
-                                 hex(path[0]), dst_mac, out_port)
+                        LOG.info(
+                            "FlowInstaller: single-switch flow dpid=%s dst=%s port=%d",
+                            hex(path[0]),
+                            dst_mac,
+                            out_port,
+                        )
             return []
 
         links: list[LinkKey] = []
@@ -81,8 +97,10 @@ class FlowInstaller:
             dpid = path[i]
             dp = self._datapaths.get(dpid)
             if dp is None:
-                LOG.warning("FlowInstaller: datapath dpid=%s not connected — skipping",
-                            hex(dpid))
+                LOG.warning(
+                    "FlowInstaller: datapath dpid=%s not connected — skipping",
+                    hex(dpid),
+                )
                 continue
 
             if i == len(path) - 1:
@@ -90,19 +108,31 @@ class FlowInstaller:
                 out_port = self._find_edge_port(dpid, src_mac, dst_mac)
                 if out_port is not None:
                     self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
-                    LOG.info("FlowInstaller:   [sink] dpid=%s eth_dst=%s → port=%d (edge)",
-                             hex(dpid), dst_mac, out_port)
+                    LOG.info(
+                        "FlowInstaller:   [sink] dpid=%s eth_dst=%s → port=%d (edge)",
+                        hex(dpid),
+                        dst_mac,
+                        out_port,
+                    )
                 else:
-                    LOG.warning("FlowInstaller:   [sink] dpid=%s no edge port for %s",
-                                hex(dpid), dst_mac)
+                    LOG.warning(
+                        "FlowInstaller:   [sink] dpid=%s no edge port for %s",
+                        hex(dpid),
+                        dst_mac,
+                    )
             else:
                 # Intermediate switch: output toward next hop
                 next_dpid = path[i + 1]
                 out_port = self.graph.get_port_for_peer(dpid, next_dpid)
                 if out_port is not None:
                     self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
-                    LOG.info("FlowInstaller:   [mid]  dpid=%s eth_dst=%s → port=%d (→ %s)",
-                             hex(dpid), dst_mac, out_port, hex(next_dpid))
+                    LOG.info(
+                        "FlowInstaller:   [mid]  dpid=%s eth_dst=%s → port=%d (→ %s)",
+                        hex(dpid),
+                        dst_mac,
+                        out_port,
+                        hex(next_dpid),
+                    )
 
             # Record link with real port numbers
             if i >= len(path) - 1:
@@ -111,10 +141,14 @@ class FlowInstaller:
             src_port = self.graph.get_port_for_peer(dpid, next_dpid)
             dst_port = self.graph.get_port_for_peer(next_dpid, dpid)
             if src_port is not None and dst_port is not None:
-                links.append(LinkKey(
-                    src_dpid=dpid, src_port=src_port,
-                    dst_dpid=next_dpid, dst_port=dst_port,
-                ))
+                links.append(
+                    LinkKey(
+                        src_dpid=dpid,
+                        src_port=src_port,
+                        dst_dpid=next_dpid,
+                        dst_port=dst_port,
+                    )
+                )
 
         # Source switch (path[0]): output toward second hop
         src_dpid = path[0]
@@ -123,18 +157,31 @@ class FlowInstaller:
         out_port = self.graph.get_port_for_peer(src_dpid, next_dpid)
         if dp and out_port is not None:
             self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
-            LOG.info("FlowInstaller:   [src]  dpid=%s eth_dst=%s → port=%d (→ %s)",
-                     hex(src_dpid), dst_mac, out_port, hex(next_dpid))
+            LOG.info(
+                "FlowInstaller:   [src]  dpid=%s eth_dst=%s → port=%d (→ %s)",
+                hex(src_dpid),
+                dst_mac,
+                out_port,
+                hex(next_dpid),
+            )
 
         dst_port = self.graph.get_port_for_peer(next_dpid, src_dpid)
         if out_port is not None and dst_port is not None:
-            links.append(LinkKey(
-                src_dpid=src_dpid, src_port=out_port,
-                dst_dpid=next_dpid, dst_port=dst_port,
-            ))
+            links.append(
+                LinkKey(
+                    src_dpid=src_dpid,
+                    src_port=out_port,
+                    dst_dpid=next_dpid,
+                    dst_port=dst_port,
+                )
+            )
 
-        LOG.info("FlowInstaller: install_path done | %d links tracked for %s → %s",
-                 len(links), src_mac, dst_mac)
+        LOG.info(
+            "FlowInstaller: install_path done | %d links tracked for %s → %s",
+            len(links),
+            src_mac,
+            dst_mac,
+        )
         return links
 
     # ── Flood rules ─────────────────────────────────────────────────────
@@ -153,12 +200,19 @@ class FlowInstaller:
         match = ofp_parser.OFPMatch()
 
         self._send_flow_mod(
-            dp, match=match, actions=actions, priority=PRIORITY_FLOOD,
-            idle_timeout=0, hard_timeout=0,
+            dp,
+            match=match,
+            actions=actions,
+            priority=PRIORITY_FLOOD,
+            idle_timeout=0,
+            hard_timeout=0,
             cookie=FLOOD_COOKIE_BASE | (dpid & 0xFFFF),
         )
-        LOG.info("FlowInstaller: flood rule dpid=%s → ports=%s",
-                 hex(dpid), sorted(flood_ports))
+        LOG.info(
+            "FlowInstaller: flood rule dpid=%s → ports=%s",
+            hex(dpid),
+            sorted(flood_ports),
+        )
 
     def delete_flood_rule(self, dpid: int) -> None:
         """Delete the flood rule on a switch (cookie-based, preserves unicast flows)."""
@@ -219,8 +273,9 @@ class FlowInstaller:
 
     # ── Packet-out helpers ──────────────────────────────────────────────
 
-    def send_packet_out(self, dp: Datapath, data: bytes, buffer_id: int,
-                        in_port: int, out_port: int) -> None:
+    def send_packet_out(
+        self, dp: Datapath, data: bytes, buffer_id: int, in_port: int, out_port: int
+    ) -> None:
         """Send a packet out a specific port."""
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
@@ -233,18 +288,31 @@ class FlowInstaller:
             data=data if buffer_id == ofp.OFP_NO_BUFFER else None,
         )
         dp.send_msg(out)
-        LOG.debug("FlowInstaller: packet-out dpid=%s in=%d → out=%d",
-                  hex(dp.id), in_port, out_port)
+        LOG.debug(
+            "FlowInstaller: packet-out dpid=%s in=%d → out=%d",
+            hex(dp.id),
+            in_port,
+            out_port,
+        )
 
-    def flood_packet_out(self, dp: Datapath, in_port: int,
-                         flood_ports: set[int], data: bytes, buffer_id: int) -> None:
+    def flood_packet_out(
+        self,
+        dp: Datapath,
+        in_port: int,
+        flood_ports: set[int],
+        data: bytes,
+        buffer_id: int,
+    ) -> None:
         """Send a packet out a set of ports (broadcast flooding)."""
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
         ports = flood_ports - {in_port}
         if not ports:
-            LOG.debug("FlowInstaller: flood packet-out dpid=%s in=%d → NO PORTS",
-                      hex(dp.id), in_port)
+            LOG.debug(
+                "FlowInstaller: flood packet-out dpid=%s in=%d → NO PORTS",
+                hex(dp.id),
+                in_port,
+            )
             return
         actions = [ofp_parser.OFPActionOutput(p) for p in sorted(ports)]
         out = ofp_parser.OFPPacketOut(
@@ -255,24 +323,46 @@ class FlowInstaller:
             data=data if buffer_id == ofp.OFP_NO_BUFFER else None,
         )
         dp.send_msg(out)
-        LOG.debug("FlowInstaller: flood packet-out dpid=%s in=%d → ports=%s",
-                  hex(dp.id), in_port, sorted(ports))
+        LOG.debug(
+            "FlowInstaller: flood packet-out dpid=%s in=%d → ports=%s",
+            hex(dp.id),
+            in_port,
+            sorted(ports),
+        )
 
     # ── Internal helpers ────────────────────────────────────────────────
 
-    def _add_flow(self, dp: Datapath, dst_mac: str, out_port: int,
-                  idle_timeout: int, priority: int) -> None:
+    def _add_flow(
+        self,
+        dp: Datapath,
+        dst_mac: str,
+        out_port: int,
+        idle_timeout: int,
+        priority: int,
+    ) -> None:
         ofp_parser = dp.ofproto_parser
         match = ofp_parser.OFPMatch(eth_dst=dst_mac)
         actions = [ofp_parser.OFPActionOutput(out_port)]
         self._send_flow_mod(
-            dp, match=match, actions=actions,
-            priority=priority, idle_timeout=idle_timeout, hard_timeout=0,
+            dp,
+            match=match,
+            actions=actions,
+            priority=priority,
+            idle_timeout=idle_timeout,
+            hard_timeout=0,
         )
 
-    def _send_flow_mod(self, dp: Datapath, *, match, actions,
-                       priority: int, idle_timeout: int, hard_timeout: int,
-                       cookie: int = 0) -> None:
+    def _send_flow_mod(
+        self,
+        dp: Datapath,
+        *,
+        match,
+        actions,
+        priority: int,
+        idle_timeout: int,
+        hard_timeout: int,
+        cookie: int = 0,
+    ) -> None:
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
         inst = [ofp_parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
@@ -294,14 +384,24 @@ class FlowInstaller:
         if ht is not None:
             loc = ht.lookup(dst_mac)
             if loc and loc.dpid == dpid:
-                LOG.debug("FlowInstaller: edge port for %s on dpid=%s → port=%d (from tracker)",
-                          dst_mac, hex(dpid), loc.port)
+                LOG.debug(
+                    "FlowInstaller: edge port for %s on dpid=%s → port=%d (from tracker)",
+                    dst_mac,
+                    hex(dpid),
+                    loc.port,
+                )
                 return loc.port
         # Fallback: pick any edge port on this switch
         for sw, port in self.graph.edge_ports:
             if sw == dpid:
-                LOG.debug("FlowInstaller: edge port for %s on dpid=%s → port=%d (fallback)",
-                          dst_mac, hex(dpid), port)
+                LOG.debug(
+                    "FlowInstaller: edge port for %s on dpid=%s → port=%d (fallback)",
+                    dst_mac,
+                    hex(dpid),
+                    port,
+                )
                 return port
-        LOG.warning("FlowInstaller: no edge port found for %s on dpid=%s", dst_mac, hex(dpid))
+        LOG.warning(
+            "FlowInstaller: no edge port found for %s on dpid=%s", dst_mac, hex(dpid)
+        )
         return None

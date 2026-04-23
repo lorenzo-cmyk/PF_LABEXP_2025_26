@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from host_tracker import HostTracker, HostLocation
+from host_tracker import HostTracker
 from path_computer import PathComputer
 from route_tracker import RouteTracker
 from flow_installer import FlowInstaller
@@ -34,14 +34,20 @@ class ForwardingPlane:
         # Wire host tracker reference into flow installer for edge port lookup
         self.flow_installer._host_tracker = host_tracker
 
-    def handle_packet(self, src_mac: str, dst_mac: str,
-                      in_dpid: int, in_port: int) -> bool:
+    def handle_packet(
+        self, src_mac: str, dst_mac: str, in_dpid: int, in_port: int
+    ) -> bool:
         """Handle a packet-in for unicast forwarding.
 
         Returns True if a path was installed, False if unreachable or unknown dst.
         """
-        LOG.info("Forwarding: packet-in %s → %s on dpid=%s port=%d",
-                 src_mac, dst_mac, hex(in_dpid), in_port)
+        LOG.info(
+            "Forwarding: packet-in %s → %s on dpid=%s port=%d",
+            src_mac,
+            dst_mac,
+            hex(in_dpid),
+            in_port,
+        )
 
         # Learn source location
         self.host_tracker.learn(src_mac, in_dpid, in_port)
@@ -56,15 +62,23 @@ class ForwardingPlane:
         dst_dpid = dst_loc.dpid
 
         if src_dpid == dst_dpid:
-            LOG.info("Forwarding: same switch dpid=%s — installing direct flow", hex(src_dpid))
+            LOG.info(
+                "Forwarding: same switch dpid=%s — installing direct flow",
+                hex(src_dpid),
+            )
             self.flow_installer.install_path([src_dpid], src_mac, dst_mac)
             return True
 
         # Compute shortest path
         path = self.path_computer.compute_path(src_dpid, dst_dpid)
         if path is None:
-            LOG.warning("Forwarding: NO PATH %s(dpid=%s) → %s(dpid=%s) — network partitioned?",
-                        src_mac, hex(src_dpid), dst_mac, hex(dst_dpid))
+            LOG.warning(
+                "Forwarding: NO PATH %s(dpid=%s) → %s(dpid=%s) — network partitioned?",
+                src_mac,
+                hex(src_dpid),
+                dst_mac,
+                hex(dst_dpid),
+            )
             return False
 
         # Install forward path (sink-to-source)
@@ -80,8 +94,13 @@ class ForwardingPlane:
         if reverse_links:
             self.route_tracker.add_route(dst_mac, src_mac, reverse_links)
 
-        LOG.info("Forwarding: path installed %s → %s | fwd_links=%d rev_links=%d",
-                 src_mac, dst_mac, len(links), len(reverse_links))
+        LOG.info(
+            "Forwarding: path installed %s → %s | fwd_links=%d rev_links=%d",
+            src_mac,
+            dst_mac,
+            len(links),
+            len(reverse_links),
+        )
         return True
 
     def get_output_port(self, src_dpid: int, dst_dpid: int) -> Optional[int]:
@@ -90,15 +109,23 @@ class ForwardingPlane:
         if path is None or len(path) < 2:
             return None
         port = self.flow_installer.graph.get_port_for_peer(path[0], path[1])
-        LOG.debug("Forwarding: output_port %s → %s = port %d",
-                  hex(src_dpid), hex(dst_dpid), port if port else -1)
+        LOG.debug(
+            "Forwarding: output_port %s → %s = port %d",
+            hex(src_dpid),
+            hex(dst_dpid),
+            port if port else -1,
+        )
         return port
 
     def handle_link_failure(self, link: LinkKey) -> list[tuple[str, str]]:
         """Called by FaultHandler. Removes affected flows and returns affected pairs."""
-        LOG.warning("Forwarding: link failure %s:%d → %s:%d — finding affected flows",
-                     hex(link.src_dpid), link.src_port,
-                     hex(link.dst_dpid), link.dst_port)
+        LOG.warning(
+            "Forwarding: link failure %s:%d → %s:%d — finding affected flows",
+            hex(link.src_dpid),
+            link.src_port,
+            hex(link.dst_dpid),
+            link.dst_port,
+        )
 
         affected = self.route_tracker.pairs_on_link(link)
         if not affected:
@@ -117,8 +144,12 @@ class ForwardingPlane:
                 self.flow_installer.delete_flows_for_mac(dpid, src_mac)
             self.route_tracker.remove_route(src_mac, dst_mac)
             self.route_tracker.remove_route(dst_mac, src_mac)
-            LOG.info("Forwarding: cleaned %d switches for pair %s ↔ %s",
-                     len(dpids_to_clean), src_mac, dst_mac)
+            LOG.info(
+                "Forwarding: cleaned %d switches for pair %s ↔ %s",
+                len(dpids_to_clean),
+                src_mac,
+                dst_mac,
+            )
 
         self.path_computer.invalidate()
         LOG.info("Forwarding: link failure handled | %d affected pairs", len(affected))

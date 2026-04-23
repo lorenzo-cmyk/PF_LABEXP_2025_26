@@ -38,8 +38,13 @@ class RouteTracker:
             f"{hex(lk.src_dpid)}:{lk.src_port}→{hex(lk.dst_dpid)}:{lk.dst_port}"
             for lk in path_links
         )
-        LOG.info("RouteTracker: added route %s → %s | links=[%s] (replaced %d old links)",
-                 src_mac, dst_mac, link_str, old_count)
+        LOG.info(
+            "RouteTracker: added route %s → %s | links=[%s] (replaced %d old links)",
+            src_mac,
+            dst_mac,
+            link_str,
+            old_count,
+        )
 
     def remove_route(self, src_mac: str, dst_mac: str) -> None:
         with self._lock:
@@ -47,10 +52,16 @@ class RouteTracker:
             links = self._pair_to_links.get(pair, [])
             self._remove_pair_unsafe(pair)
         if links:
-            LOG.info("RouteTracker: removed route %s → %s (%d links)",
-                     src_mac, dst_mac, len(links))
+            LOG.info(
+                "RouteTracker: removed route %s → %s (%d links)",
+                src_mac,
+                dst_mac,
+                len(links),
+            )
         else:
-            LOG.debug("RouteTracker: remove_route %s → %s (not tracked)", src_mac, dst_mac)
+            LOG.debug(
+                "RouteTracker: remove_route %s → %s (not tracked)", src_mac, dst_mac
+            )
 
     def _remove_pair_unsafe(self, pair: tuple[str, str]) -> None:
         """Remove tracking for a pair (must hold lock)."""
@@ -64,9 +75,14 @@ class RouteTracker:
         """Return all (src_mac, dst_mac) pairs affected by a link failure."""
         with self._lock:
             pairs = set(self._link_to_pairs.get(link.undirected_key, set()))
-        LOG.info("RouteTracker: pairs on link %s:%d→%s:%d = %d",
-                 hex(link.src_dpid), link.src_port,
-                 hex(link.dst_dpid), link.dst_port, len(pairs))
+        LOG.info(
+            "RouteTracker: pairs on link %s:%d→%s:%d = %d",
+            hex(link.src_dpid),
+            link.src_port,
+            hex(link.dst_dpid),
+            link.dst_port,
+            len(pairs),
+        )
         for src, dst in pairs:
             LOG.info("RouteTracker:   affected pair: %s → %s", src, dst)
         return pairs
@@ -99,6 +115,9 @@ class RouteTracker:
             for pair in purged:
                 self._remove_pair_unsafe(pair)
         if purged:
-            LOG.info("RouteTracker: purged %d routes involving dead switch dpid=%s",
-                     len(purged), hex(dpid))
+            LOG.info(
+                "RouteTracker: purged %d routes involving dead switch dpid=%s",
+                len(purged),
+                hex(dpid),
+            )
         return purged

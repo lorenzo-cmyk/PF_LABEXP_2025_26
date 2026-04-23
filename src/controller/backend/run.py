@@ -9,16 +9,19 @@ Usage:
 """
 
 import os
+
 # Use eventlet hub — we already monkey-patch with eventlet.
 # The default 'native' hub uses threading.Thread which lacks .kill(),
 # causing AppManager.run_apps() to crash on cleanup.
 os.environ.setdefault("OSKEN_HUB_TYPE", "eventlet")
 
 import eventlet
+
 eventlet.monkey_patch()
 
 # Suppress eventlet's own deprecation noise and the harmless RLock warning
 import warnings
+
 warnings.filterwarnings("ignore")
 
 # Enable LLDP link discovery in os-ken's Switches app.
@@ -26,9 +29,11 @@ warnings.filterwarnings("ignore")
 # Import switches first to register its cfg options, then override.
 from os_ken.topology import switches as _  # noqa: F401 — registers cfg opts
 from os_ken import cfg
+
 cfg.CONF.set_override("observe_links", True)
 
 import logging
+
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)-5s] %(name)s: %(message)s",
@@ -45,7 +50,9 @@ from os_ken.base.app_manager import AppManager
 if __name__ == "__main__":
     LOG = logging.getLogger("run")
     LOG.info("Starting SDN controller (os-ken + eventlet, LLDP enabled)")
-    AppManager.run_apps([
-        "os_ken.topology.switches",  # LLDP-based topology discovery
-        "backend",
-    ])
+    AppManager.run_apps(
+        [
+            "os_ken.topology.switches",  # LLDP-based topology discovery
+            "backend",
+        ]
+    )

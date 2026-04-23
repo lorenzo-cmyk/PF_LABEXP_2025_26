@@ -6,7 +6,6 @@ import logging
 from collections import deque
 from typing import Optional
 
-import networkx as nx
 
 from topology import TopologyGraph
 
@@ -58,8 +57,12 @@ class SpanningTreeManager:
 
         # Log summary
         undirected = {(min(u, v), max(u, v)) for u, v in tree_edges}
-        LOG.info("ST: computed | root=%s | tree_edges=%d | switches=%d",
-                 hex(root), len(undirected), len(g.nodes))
+        LOG.info(
+            "ST: computed | root=%s | tree_edges=%d | switches=%d",
+            hex(root),
+            len(undirected),
+            len(g.nodes),
+        )
         for u, v in sorted(undirected):
             LOG.debug("ST: tree edge %s — %s", hex(u), hex(v))
 

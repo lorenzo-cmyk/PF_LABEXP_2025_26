@@ -207,9 +207,7 @@ class FlowInstaller:
         # traffic before the table-miss rule gets a chance to send it to the
         # controller.
         match = ofp_parser.OFPMatch(eth_dst="ff:ff:ff:ff:ff:ff")
-        actions = [
-            ofp_parser.OFPActionOutput(port) for port in sorted(flood_ports)
-        ]
+        actions = [ofp_parser.OFPActionOutput(port) for port in sorted(flood_ports)]
 
         self._send_flow_mod(
             dp,

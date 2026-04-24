@@ -87,11 +87,15 @@ class TopologyGraph:
             if (dpid, port_no) not in self._known_internal_ports:
                 self._edge_ports.add((dpid, port_no))
                 LOG.debug(
-                    "Graph: added port dpid=%s port=%d (assumed edge)", hex(dpid), port_no
+                    "Graph: added port dpid=%s port=%d (assumed edge)",
+                    hex(dpid),
+                    port_no,
                 )
             else:
                 LOG.debug(
-                    "Graph: added port dpid=%s port=%d (known link, no edge)", hex(dpid), port_no
+                    "Graph: added port dpid=%s port=%d (known link, no edge)",
+                    hex(dpid),
+                    port_no,
                 )
 
     def remove_port(self, dpid: int, port_no: int) -> None:

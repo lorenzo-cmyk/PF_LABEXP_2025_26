@@ -17,6 +17,10 @@ class SpanningTreeManager:
 
     Does NOT disable ports physically. Returns the set of ports that
     should be used for flooding broadcast traffic.
+
+    The tree is built via BFS from the lowest dpid node.  Disconnected
+    components (after a network partition) each get their own root and
+    are independently spanned by the BFS outer loop.
     """
 
     def __init__(self, graph: TopologyGraph) -> None:
@@ -25,7 +29,13 @@ class SpanningTreeManager:
         self._root: Optional[int] = None
 
     def compute(self) -> None:
-        """Recompute the spanning tree from the current graph snapshot."""
+        """Recompute the spanning tree from the current graph snapshot.
+
+        Uses BFS starting from the lowest dpid.  The outer loop over
+        ``sorted(g.nodes)`` ensures deterministic behaviour across
+        disconnected components (each component gets its first BFS from
+        the smallest node in that component).
+        """
         g = self.graph.copy_graph()
         if not g.nodes:
             self._tree_edges = set()
@@ -36,7 +46,6 @@ class SpanningTreeManager:
         root = min(g.nodes)
         self._root = root
 
-        # BFS
         visited = set()
         tree_edges: set[tuple[int, int]] = set()
 
@@ -67,15 +76,22 @@ class SpanningTreeManager:
             LOG.debug("ST: tree edge %s — %s", hex(u), hex(v))
 
     def flood_ports(self, dpid: int) -> set[int]:
-        """Return ports on *dpid* that belong to the spanning tree (internal) + edge ports."""
+        """Return ports on *dpid* that should participate in broadcast flooding.
+
+        The returned set is the union of:
+        1. All edge (host-facing) ports on the switch, and
+        2. Internal ports that belong to the active spanning tree.
+        """
         ports: set[int] = set()
 
-        # Edge ports (host-facing) always included
+        # Edge ports (host-facing) always included so connected hosts
+        # receive ARP and other broadcast traffic.
         for sw, port in self.graph.edge_ports:
             if sw == dpid:
                 ports.add(port)
 
-        # Internal ports that are part of the spanning tree
+        # Internal ports that are part of the spanning tree.
+        # Non-tree internal ports are excluded to prevent loops.
         g = self.graph.copy_graph()
         if dpid not in g:
             LOG.debug("ST: flood_ports dpid=%s not in graph", hex(dpid))
@@ -91,8 +107,10 @@ class SpanningTreeManager:
 
     @property
     def tree_edges(self) -> set[tuple[int, int]]:
+        """Current spanning tree edges as directed (dpid_a, dpid_b) pairs."""
         return set(self._tree_edges)
 
     @property
     def root(self) -> Optional[int]:
+        """The dpid of the BFS root, or None if the graph is empty."""
         return self._root

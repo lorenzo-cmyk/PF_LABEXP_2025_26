@@ -30,7 +30,20 @@ class FaultHandler:
         self.flow_installer = flow_installer
 
     def handle_port_down(self, dpid: int, port: int) -> None:
-        """React to a port going down."""
+        """React to a port going down.
+
+        Two distinct cases, driven by whether we can resolve a link:
+
+        **Edge port** (link is None):
+            The port was host-facing. Purge any hosts learned on it
+            (they may reconnect elsewhere — mobility), delete their
+            stale flows on all switches, and clean route tracker entries.
+
+        **Switch-to-switch link** (link found):
+            A link between switches failed. Let ForwardingPlane handle
+            the affected flows. The port is removed from the graph
+            afterward (which also tears down the link).
+        """
         LOG.warning(
             "FaultHandler: PORT DOWN dpid=%s port=%d — starting recovery",
             hex(dpid),
@@ -53,10 +66,7 @@ class FaultHandler:
                 port,
             )
 
-        # If this is an edge port (host-facing), purge any hosts learned on it.
-        # The host physically disconnected and may reconnect elsewhere (mobility).
-        # Also delete stale flows for those hosts on ALL switches — otherwise
-        # old path entries will blackhole traffic toward the now-dead port.
+        # ── Edge port: purge hosts and their flows ───────────────────
         if link is None:
             removed = self.forwarding.host_tracker.remove_by_port(dpid, port)
             if removed:
@@ -66,14 +76,15 @@ class FaultHandler:
                     port,
                     ", ".join(removed),
                 )
-                # Clean stale flows for each purged host on every switch
+                # Delete stale flows for each purged host on *every* switch.
+                # Without this, old flow entries would blackhole traffic
+                # toward the now-dead port.
                 for mac in removed:
                     for sw_dpid in self.graph.switches:
                         self.flow_installer.delete_flows_for_mac(sw_dpid, mac)
-                    # Also purge stale route tracker entries for this host
                     self.forwarding.route_tracker.purge_mac(mac)
 
-        # Remove port from graph (also removes associated link)
+        # ── Remove port from graph (also tears down any associated link)
         self.graph.remove_port(dpid, port)
 
         if link is not None:

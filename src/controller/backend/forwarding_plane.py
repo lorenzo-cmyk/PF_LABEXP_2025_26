@@ -146,7 +146,19 @@ class ForwardingPlane:
         return port
 
     def handle_link_failure(self, link: LinkKey) -> list[tuple[str, str]]:
-        """Called by FaultHandler. Removes affected flows and returns affected pairs."""
+        """Called by FaultHandler. Removes affected flows and returns affected pairs.
+
+        The recovery strategy:
+        1. Query RouteTracker for every (src_mac, dst_mac) pair whose path
+           traverses the failed link (using the undirected key, which matches
+           regardless of link direction).
+        2. For each affected pair, delete both src_mac and dst_mac flows on
+           every switch that was on the old path.
+        3. Remove the pair from RouteTracker so a new path is computed on the
+           next packet-in.
+        4. Invalidate the entire path cache since any cached path may now be
+           invalid after the topology change.
+        """
         LOG.warning(
             "Forwarding: link failure %s:%d → %s:%d — finding affected flows",
             hex(link.src_dpid),
@@ -167,6 +179,9 @@ class ForwardingPlane:
             for lk in pair_links:
                 dpids_to_clean.add(lk.src_dpid)
                 dpids_to_clean.add(lk.dst_dpid)
+            # Delete flows matching both MACs on every switch that carried
+            # this pair's traffic.  ``delete_flows_for_mac`` is idempotent
+            # — if the flows already timed out, the delete is a safe no-op.
             for dpid in dpids_to_clean:
                 self.flow_installer.delete_flows_for_mac(dpid, dst_mac)
                 self.flow_installer.delete_flows_for_mac(dpid, src_mac)

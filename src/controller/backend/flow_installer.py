@@ -35,6 +35,7 @@ class FlowInstaller:
         self._host_tracker: Optional[object] = None  # set by ForwardingPlane
 
     def register_dp(self, dp: Datapath) -> None:
+        """Store a datapath handle for later flow-mod operations."""
         self._datapaths[dp.id] = dp
         LOG.info(
             "FlowInstaller: registered datapath dpid=%s | total=%d",
@@ -43,6 +44,7 @@ class FlowInstaller:
         )
 
     def unregister_dp(self, dpid: int) -> None:
+        """Forget a datapath (e.g., switch disconnected)."""
         self._datapaths.pop(dpid, None)
         LOG.info(
             "FlowInstaller: unregistered datapath dpid=%s | total=%d",
@@ -51,6 +53,7 @@ class FlowInstaller:
         )
 
     def get_dp(self, dpid: int) -> Optional[Datapath]:
+        """Return the Datapath handle for *dpid*, or None if not connected."""
         return self._datapaths.get(dpid)
 
     # ── Install a unicast path (sink → source) ──────────────────────────
@@ -62,6 +65,13 @@ class FlowInstaller:
 
         Installs sink-to-source (last switch first). Returns the list of
         LinkKey objects traversed, for RouteTracker.
+
+        Why sink-to-source?  If we install source→sink and the controller
+        or switch crashes mid-installation, the first few switches already
+        forward traffic into a path where downstream switches have no flows
+        yet — packets are dropped.  Installing sink→source means the packet
+        is delivered as soon as the last hop is installed, and intermediate
+        packet-in events handle the rest safely.
         """
         timeout = 0 if is_policy else DEFAULT_IDLE_TIMEOUT
         path_str = " → ".join(hex(d) for d in path)
@@ -92,7 +102,9 @@ class FlowInstaller:
 
         links: list[LinkKey] = []
 
-        # Walk the path backwards (sink → source)
+        # ── Walk the path backwards: sink → … → source ─────────────────
+        # For path [s1, s2, s3]: process s3 (sink), then s2 (mid), then
+        # handle s1 (source) after the loop.
         for i in range(len(path) - 1, 0, -1):
             dpid = path[i]
             dp = self._datapaths.get(dpid)
@@ -104,7 +116,7 @@ class FlowInstaller:
                 continue
 
             if i == len(path) - 1:
-                # Last (sink) switch: output to edge port (host-facing)
+                # ── Sink switch: output to edge port (host-facing) ──
                 out_port = self._find_edge_port(dpid, src_mac, dst_mac)
                 if out_port is not None:
                     self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
@@ -121,7 +133,7 @@ class FlowInstaller:
                         dst_mac,
                     )
             else:
-                # Intermediate switch: output toward next hop
+                # ── Intermediate switch: output toward next hop ──
                 next_dpid = path[i + 1]
                 out_port = self.graph.get_port_for_peer(dpid, next_dpid)
                 if out_port is not None:
@@ -134,9 +146,11 @@ class FlowInstaller:
                         hex(next_dpid),
                     )
 
-            # Record link with real port numbers
+            # ── Build LinkKey for RouteTracker ──
+            # Sink switch has no next-hop link to record (it is the endpoint).
+            # Intermediate switches record the link to their successor.
             if i >= len(path) - 1:
-                continue  # sink has no next hop to record
+                continue
             next_dpid = path[i + 1]
             src_port = self.graph.get_port_for_peer(dpid, next_dpid)
             dst_port = self.graph.get_port_for_peer(next_dpid, dpid)
@@ -150,7 +164,7 @@ class FlowInstaller:
                     )
                 )
 
-        # Source switch (path[0]): output toward second hop
+        # ── Source switch (path[0]): output toward second hop ────────
         src_dpid = path[0]
         next_dpid = path[1]
         dp = self._datapaths.get(src_dpid)
@@ -353,6 +367,7 @@ class FlowInstaller:
         idle_timeout: int,
         priority: int,
     ) -> None:
+        """Install a unicast flow matching *dst_mac* → output *out_port*."""
         ofp_parser = dp.ofproto_parser
         match = ofp_parser.OFPMatch(eth_dst=dst_mac)
         actions = [ofp_parser.OFPActionOutput(out_port)]
@@ -376,6 +391,7 @@ class FlowInstaller:
         hard_timeout: int,
         cookie: int = 0,
     ) -> None:
+        """Build and send a single OFPFlowMod message to *dp*."""
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
         inst = [ofp_parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]

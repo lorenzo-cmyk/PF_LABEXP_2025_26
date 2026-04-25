@@ -58,6 +58,7 @@ class TopologyGraph:
     # -- graph mutations --------------------------------------------------
 
     def add_switch(self, dpid: int) -> None:
+        """Register a switch node in the graph."""
         with self._lock:
             self._graph.add_node(dpid)
             self._switch_ports.setdefault(dpid, set())
@@ -68,6 +69,7 @@ class TopologyGraph:
         )
 
     def remove_switch(self, dpid: int) -> None:
+        """Remove a switch and all its ports, links, and edge markings."""
         with self._lock:
             self._graph.remove_node(dpid)
             self._switch_ports.pop(dpid, None)
@@ -82,6 +84,12 @@ class TopologyGraph:
         )
 
     def add_port(self, dpid: int, port_no: int) -> None:
+        """Register a port on a switch.
+
+        If the port is not known to be an internal (switch-to-switch) link,
+        it is assumed to be edge (host-facing).  Later, when LLDP discovers
+        a link on this port, ``add_link()`` will remove the edge marking.
+        """
         with self._lock:
             self._switch_ports.setdefault(dpid, set()).add(port_no)
             if (dpid, port_no) not in self._known_internal_ports:
@@ -99,11 +107,18 @@ class TopologyGraph:
                 )
 
     def remove_port(self, dpid: int, port_no: int) -> None:
+        """Remove a port from a switch and tear down any link involving it.
+
+        Iterates all graph edges to find the one that uses *port_no* on
+        *dpid*, then removes both the edge marking and the graph edge.
+        """
         removed_links: list[str] = []
         with self._lock:
             self._switch_ports.get(dpid, set()).discard(port_no)
             self._edge_ports.discard((dpid, port_no))
             edges_to_remove = []
+            # Each edge stores dpid_a/dpid_b, port_a/port_b in a canonical
+            # order (lower dpid first).  We must check both orientations.
             for u, v, data in self._graph.edges(data=True):
                 port_u = data["port_a"] if data["dpid_a"] == u else data["port_b"]
                 port_v = data["port_b"] if data["dpid_a"] == u else data["port_a"]
@@ -127,6 +142,13 @@ class TopologyGraph:
             )
 
     def add_link(self, link: LinkKey) -> None:
+        """Record a switch-to-switch link discovered by LLDP.
+
+        The edge is stored in the NetworkX graph with canonical ordering
+        (lower dpid first) so that ``nx.Graph`` sees it as undirected.
+        The port pair is removed from ``_edge_ports`` and recorded in
+        ``_known_internal_ports`` to prevent future reclassification as edge.
+        """
         with self._lock:
             a, b = min(link.src_dpid, link.dst_dpid), max(link.src_dpid, link.dst_dpid)
             port_a = link.src_port if link.src_dpid == a else link.dst_port
@@ -146,16 +168,19 @@ class TopologyGraph:
         )
 
     def remove_link(self, link: LinkKey) -> None:
+        """Remove a switch-to-switch link from the graph.
+
+        The ports are deliberately *not* reverted to edge status.  If the
+        link is only temporarily gone (LLDP timeout), re-adding it as edge
+        would open a broadcast loop through the spanning tree.  The ports
+        stay in ``_known_internal_ports`` until the switch is removed.
+        """
         with self._lock:
             if self._graph.has_edge(link.src_dpid, link.dst_dpid):
                 self._graph.remove_edge(link.src_dpid, link.dst_dpid)
                 removed = True
             else:
                 removed = False
-            # Never automatically turn broken switch links back into edge ports.
-            # If it's a switch-to-switch link, it stays known as not an edge port
-            # even if the link is currently timed out by LLDP. This prevents
-            # broadcast storms on active switch ports missing LLDP.
         if removed:
             LOG.info(
                 "Graph: removed link %s:%d → %s:%d | edges=%d",
@@ -178,16 +203,19 @@ class TopologyGraph:
 
     @property
     def switches(self) -> list[int]:
+        """Return all switch dpids currently in the graph (snapshot)."""
         with self._lock:
             return list(self._graph.nodes())
 
     @property
     def edge_ports(self) -> set[tuple[int, int]]:
+        """Return all (dpid, port_no) pairs believed to be host-facing."""
         with self._lock:
             return set(self._edge_ports)
 
     @property
     def links(self) -> list[LinkKey]:
+        """Return all directed links currently in the graph."""
         with self._lock:
             result = []
             for u, v, data in self._graph.edges(data=True):
@@ -197,6 +225,7 @@ class TopologyGraph:
             return result
 
     def get_port_for_peer(self, src_dpid: int, dst_dpid: int) -> Optional[int]:
+        """Return the port on *src_dpid* that connects to *dst_dpid*, or None."""
         with self._lock:
             if not self._graph.has_edge(src_dpid, dst_dpid):
                 return None
@@ -206,6 +235,7 @@ class TopologyGraph:
             return data["port_b"]
 
     def copy_graph(self) -> nx.Graph:
+        """Return a thread-safe deep copy of the underlying NetworkX graph."""
         with self._lock:
             return self._graph.copy()
 
@@ -218,12 +248,18 @@ class TopologyGraph:
 
 
 class TopologyManager:
-    """Watches os-ken topology events and keeps a ``TopologyGraph`` in sync."""
+    """Watches os-ken topology events and keeps a ``TopologyGraph`` in sync.
+
+    This is the bridge between os-ken's LLDP-based link discovery and our
+    pure-Python graph model.  It converts os-ken event objects into
+    graph mutations with zero business logic.
+    """
 
     def __init__(self, graph: TopologyGraph) -> None:
         self.graph = graph
 
     def switch_enter(self, dp: Datapath) -> None:
+        """Register a newly connected switch and all its ports."""
         dpid = dp.id
         port_count = 0
         self.graph.add_switch(dpid)
@@ -236,19 +272,23 @@ class TopologyManager:
         )
 
     def switch_leave(self, dp: Datapath) -> None:
+        """Unregister a disconnected switch and all associated state."""
         LOG.info("TopoMgr: switch LEAVE dpid=%s", hex(dp.id))
         self.graph.remove_switch(dp.id)
 
     def port_add(self, dp: Datapath, port_no: int) -> None:
+        """Register a newly added port (OFPPR_ADD)."""
         if port_no < 0xFFFFFFF0:
             LOG.info("TopoMgr: port ADD dpid=%s port=%d", hex(dp.id), port_no)
             self.graph.add_port(dp.id, port_no)
 
     def port_delete(self, dp: Datapath, port_no: int) -> None:
+        """Remove a deleted port and any link that used it."""
         LOG.info("TopoMgr: port DELETE dpid=%s port=%d", hex(dp.id), port_no)
         self.graph.remove_port(dp.id, port_no)
 
     def port_modify(self, dp: Datapath, port_no: int, is_down: bool) -> None:
+        """Handle a port state change (link up/down)."""
         status = "DOWN" if is_down else "UP"
         LOG.info(
             "TopoMgr: port MODIFY dpid=%s port=%d → %s", hex(dp.id), port_no, status
@@ -259,6 +299,7 @@ class TopologyManager:
             self.graph.add_port(dp.id, port_no)
 
     def link_add(self, link: Link) -> None:
+        """Record a newly discovered switch-to-switch link (from LLDP)."""
         LOG.info(
             "TopoMgr: LINK ADD %s:%d → %s:%d",
             hex(link.src.dpid),
@@ -275,6 +316,7 @@ class TopologyManager:
         self.graph.add_link(lk)
 
     def link_delete(self, link: Link) -> None:
+        """Remove a timed-out switch-to-switch link (from LLDP)."""
         LOG.info(
             "TopoMgr: LINK DELETE %s:%d → %s:%d",
             hex(link.src.dpid),
@@ -291,6 +333,11 @@ class TopologyManager:
         self.graph.remove_link(lk)
 
     def resolve_link(self, dpid: int, port_no: int) -> Optional[LinkKey]:
+        """Find the ``LinkKey`` that uses *(dpid, port_no)* as either endpoint.
+
+        Returns the directed link with *dpid* as the **source**, or None
+        if the port is edge (host-facing, no link).
+        """
         for lk in self.graph.links:
             if lk.src_dpid == dpid and lk.src_port == port_no:
                 LOG.debug(

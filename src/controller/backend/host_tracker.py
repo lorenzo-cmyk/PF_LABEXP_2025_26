@@ -77,6 +77,7 @@ class HostTracker:
         return old_loc
 
     def lookup(self, mac: str) -> Optional[HostLocation]:
+        """Return the most recently observed location of *mac*, or None."""
         with self._lock:
             loc = self._table.get(mac)
         if loc:
@@ -88,6 +89,7 @@ class HostTracker:
         return loc
 
     def remove_by_port(self, dpid: int, port: int) -> list[str]:
+        """Remove all hosts learned on *(dpid, port)*. Returns the removed MACs."""
         removed: list[str] = []
         with self._lock:
             for mac, loc in list(self._table.items()):
@@ -106,6 +108,7 @@ class HostTracker:
 
     @property
     def hosts(self) -> dict[str, HostLocation]:
+        """Return a snapshot of all known MAC→location mappings."""
         with self._lock:
             return dict(self._table)
 

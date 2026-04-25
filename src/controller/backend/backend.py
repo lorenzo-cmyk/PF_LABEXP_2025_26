@@ -123,12 +123,8 @@ class Backend(app_manager.OSKenApp):
         for src_mac, dst_mac in purged:
             for surviving_dpid in self.graph.switches:
                 if surviving_dpid != dpid:
-                    self.flow_installer.delete_flows_for_mac(
-                        surviving_dpid, dst_mac
-                    )
-                    self.flow_installer.delete_flows_for_mac(
-                        surviving_dpid, src_mac
-                    )
+                    self.flow_installer.delete_flows_for_mac(surviving_dpid, dst_mac)
+                    self.flow_installer.delete_flows_for_mac(surviving_dpid, src_mac)
 
         # Purge hosts that were attached to the dead switch
         removed_hosts = []
@@ -208,7 +204,22 @@ class Backend(app_manager.OSKenApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev) -> None:
-        """Handle a packet that missed in the flow table."""
+        """Handle a packet that missed in the flow table.
+
+        Three code paths:
+
+        1. **Broadcast/multicast** — flooded on spanning-tree ports only.
+           The source MAC is NOT learned here (broadcasts don't carry
+           reliable location info — they may arrive via internal ports).
+
+        2. **Unicast, path installed** — try to forward the buffered
+           packet out the correct port.  If the output port can't be
+           determined, fall back to flooding.
+
+        3. **Unicast, path NOT installed** (unknown/unreachable dst) —
+           flood the packet so it reaches the destination (e.g., first
+           ARP request for an unknown host).
+        """
         msg = ev.msg
         dp = msg.datapath
         dpid = dp.id
@@ -232,13 +243,14 @@ class Backend(app_manager.OSKenApp):
         src_mac = eth.src
         dst_mac = eth.dst
 
-        # Silently drop LLDP packets — os-ken's switches app handles these
+        # LLDP packets are handled by os-ken's built-in switches app
         if dst_mac == LLDP_MAC:
             return
 
-        # Broadcast / multicast: flood via spanning tree ports only.
-        # Exclude in_port from the output set to avoid sending the packet back
-        # to where it came from (the data-plane flood rule does the same).
+        # ── Path 1: broadcast / multicast → flood on spanning tree ────
+        # ``int(dst_mac, 16) & 1`` checks the multicast bit (least
+        # significant bit of the first octet).  Exclude in_port so the
+        # packet isn't sent back where it came from.
         if dst_mac == "ff:ff:ff:ff:ff:ff" or int(dst_mac.replace(":", ""), 16) & 1:
             flood_ports = self.st_mgr.flood_ports(dpid) - {in_port}
             LOG.debug(
@@ -254,7 +266,7 @@ class Backend(app_manager.OSKenApp):
             )
             return
 
-        # Unicast: try to install a path
+        # ── Path 2 / 3: unicast ───────────────────────────────────────
         LOG.info(
             "PacketIn: UNICAST %s → %s on dpid=%s port=%d",
             src_mac,
@@ -265,7 +277,7 @@ class Backend(app_manager.OSKenApp):
         installed = self.forwarding.handle_packet(src_mac, dst_mac, dpid, in_port)
 
         if installed:
-            # Send the first packet out the correct port
+            # ── Path 2: path installed → forward the buffered packet ──
             dst_loc = self.host_tracker.lookup(dst_mac)
             if dst_loc:
                 out_port = self.forwarding.get_output_port(dpid, dst_loc.dpid)
@@ -280,7 +292,7 @@ class Backend(app_manager.OSKenApp):
                         dp, msg.data, msg.buffer_id, in_port, out_port
                     )
                     return
-            # Fallback: flood if we couldn't determine the output port
+            # If we couldn't determine the output port, flood instead
             LOG.warning(
                 "PacketIn: path installed but couldn't find output port — flooding"
             )
@@ -289,6 +301,7 @@ class Backend(app_manager.OSKenApp):
                 dp, in_port, flood_ports, msg.data, msg.buffer_id
             )
         else:
+            # ── Path 3: unknown/unreachable dst → flood ───────────────
             LOG.info(
                 "PacketIn: path NOT installed (unknown/unreachable dst %s) — flooding",
                 dst_mac,
@@ -302,6 +315,15 @@ class Backend(app_manager.OSKenApp):
 
     @set_ev_cls(topo_event.EventLinkAdd)
     def _link_add_handler(self, ev) -> None:
+        """Handle a newly discovered switch-to-switch link (LLDP).
+
+        Before adding the link, we clean any hosts that were wrongly learned
+        on these ports.  During startup, all ports start as assumed-edge,
+        and broadcast traffic can cause the host tracker to absorb source
+        MACs on internal ports.  Once LLDP confirms these ports are
+        switch-to-switch, any hosts learned there are stale and must be
+        purged so they can be re-learned on their true edge ports.
+        """
         # Ensure both switches have ports initialized before processing links
         src_dp = self.flow_installer.get_dp(ev.link.src.dpid)
         dst_dp = self.flow_installer.get_dp(ev.link.dst.dpid)
@@ -319,9 +341,6 @@ class Backend(app_manager.OSKenApp):
         )
         self.topo_mgr.link_add(ev.link)
 
-        # Clean up any hosts wrongly learned on these ports (before the link
-        # was discovered, these ports were assumed edge and may have absorbed
-        # flooded traffic with wrong source MACs).
         removed_src = self.host_tracker.remove_by_port(
             ev.link.src.dpid, ev.link.src.port_no
         )
@@ -345,6 +364,7 @@ class Backend(app_manager.OSKenApp):
 
     @set_ev_cls(topo_event.EventLinkDelete)
     def _link_delete_handler(self, ev) -> None:
+        """Handle a timed-out switch-to-switch link (LLDP)."""
         LOG.warning(
             ">>> LINK DELETE %s:%d → %s:%d (from LLDP) — triggering fault handler",
             hex(ev.link.src.dpid),

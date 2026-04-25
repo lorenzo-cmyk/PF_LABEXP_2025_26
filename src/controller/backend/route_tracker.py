@@ -94,6 +94,7 @@ class RouteTracker:
         return links
 
     def clear(self) -> None:
+        """Remove all tracked routes (used on full topology reset)."""
         with self._lock:
             pair_count = len(self._pair_to_links)
             self._link_to_pairs.clear()

@@ -8,7 +8,13 @@ Usage:
     python run.py
 """
 
+from os_ken.base.app_manager import AppManager
+from os_ken.topology import switches as _  # noqa: F401 — registers cfg opts
+from os_ken import cfg
+
 import os
+import warnings
+import logging
 
 # Use eventlet hub — we already monkey-patch with eventlet.
 # The default 'native' hub uses threading.Thread which lacks .kill(),
@@ -20,19 +26,12 @@ import eventlet
 eventlet.monkey_patch()
 
 # Suppress eventlet's own deprecation noise and the harmless RLock warning
-import warnings
-
 warnings.filterwarnings("ignore")
 
 # Enable LLDP link discovery in os-ken's Switches app.
 # observe-links defaults to False, which means LLDP is NEVER sent.
 # Import switches first to register its cfg options, then override.
-from os_ken.topology import switches as _  # noqa: F401 — registers cfg opts
-from os_ken import cfg
-
 cfg.CONF.set_override("observe_links", True)
-
-import logging
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -44,8 +43,6 @@ logging.getLogger("os_ken.base.app_manager").setLevel(logging.INFO)
 logging.getLogger("os_ken.ofproto").setLevel(logging.WARNING)
 logging.getLogger("os_ken.lib").setLevel(logging.WARNING)
 logging.getLogger("os_ken.controller").setLevel(logging.INFO)
-
-from os_ken.base.app_manager import AppManager
 
 if __name__ == "__main__":
     LOG = logging.getLogger("run")

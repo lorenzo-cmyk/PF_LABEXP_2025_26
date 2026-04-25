@@ -6,6 +6,30 @@ from mininet.log import setLogLevel, info
 
 
 def test_partition():
+    """
+    Network partition and island restoration.
+
+    Tests correct isolation when a network is split into two islands,
+    and subsequent full recovery when the bridge link is restored.
+
+    Topology:
+        h1 - s1 - s2 - s3 - s4 - h4
+                  |    |
+                 h2   h3
+
+    The bridge link s2-s3 connects two halves. When it goes down,
+    traffic within each island must continue while cross-island traffic
+    must fail gracefully.
+
+    Phases:
+    1. Baseline full connectivity.
+    2. Partition network (s2-s3 down).
+    3. Test within Island 1 (h1-h2) -- expected to succeed.
+    4. Test within Island 2 (h3-h4) -- expected to succeed.
+    5. Test across partition (h1-h3) -- expected to fail (100% loss).
+    6. Restore bridge link.
+    7. Final full connectivity verification.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)
     net.addController("c0", ip="127.0.0.1", port=6653)
@@ -34,7 +58,8 @@ def test_partition():
     info("*** Waiting for discovery\n")
     time.sleep(5)
 
-    net.pingAll()
+    info("*** 1. Initial full connectivity test\n")
+    loss_initial = net.pingAll()
 
     info("*** 2. Partitioning network (Bridge s2-s3 down)\n")
     net.configLinkStatus("s2", "s3", "down")
@@ -60,7 +85,11 @@ def test_partition():
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     passed = (
-        loss_i1 == 0.0 and loss_i2 == 0.0 and loss_cross == 100.0 and loss_final == 0.0
+        loss_initial == 0.0
+        and loss_i1 == 0.0
+        and loss_i2 == 0.0
+        and loss_cross == 100.0
+        and loss_final == 0.0
     )
     if passed:
         print("\n\033[92m=========================================\033[0m")
@@ -69,7 +98,7 @@ def test_partition():
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m      FAIL (I1: {loss_i1}%, I2: {loss_i2}%, Cross: {loss_cross}%, Final: {loss_final}%) \033[0m"
+            f"\033[91m      FAIL (Initial: {loss_initial}%, I1: {loss_i1}%, I2: {loss_i2}%, Cross: {loss_cross}%, Final: {loss_final}%) \033[0m"
         )
         print("\033[91m=========================================\033[0m\n")
 

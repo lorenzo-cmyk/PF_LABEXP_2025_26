@@ -7,15 +7,26 @@ from mininet.log import setLogLevel, info
 
 def test_equal_cost_flapping():
     """
-    Edge Case: Equal-cost tie-breaking & Symmetry during constant failure
+    Edge Case: Equal-cost tie-breaking and symmetry during constant failure.
+
+    Tests that traffic survives repeated path transitions between two
+    equal-cost paths in a diamond topology.
+
     Topology: Diamond
            s2
          /    \
     h1 -s1    s4- h2
          \    /
            s3
-           
+
     Cost is identical via s2 or s3.
+
+    Phases:
+    1. Baseline ping (both paths active).
+    2. Tear down top path (s1-s2).
+    3. Restore top, tear down bottom path (s1-s3).
+    4. Tear down both remaining links (s2-s4, s1-s3) -- creates partition (100% loss).
+    5. Restore all links.
     """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

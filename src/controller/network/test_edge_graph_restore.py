@@ -28,10 +28,10 @@ def test_graph_restoration_logic():
     net.addLink(h2, s2)
 
     # Direct
-    net.addLink("s1", "s2")
+    net.addLink(s1, s2)
     # Indirect
-    net.addLink("s1", "s3")
-    net.addLink("s3", "s2")
+    net.addLink(s1, s3)
+    net.addLink(s3, s2)
 
     net.build()
     net.start()

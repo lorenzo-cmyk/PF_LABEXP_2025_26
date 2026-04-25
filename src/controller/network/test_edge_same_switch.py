@@ -111,20 +111,15 @@ def test_same_switch_and_cross_switch_mixed():
 
     if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m  PASS (same-switch + cross-switch mix)  \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  FAIL (Same: {loss_same}%, Cross1: {loss_cross1}%, Cross2: {loss_cross2}% | "
-            f"After→Same: {loss_same_after}%, Cross1: {loss_cross1_after}% | "
+            f"\033[91m      FAIL (Same: {loss_same}%, Cross1: {loss_cross1}%, Cross2: {loss_cross2}%, "
+            f"AfterSame: {loss_same_after}%, AfterCross1: {loss_cross1_after}%, "
             f"Final: {loss_final}%) \033[0m"
         )
-        if loss_same_after > 0:
-            print(
-                "\033[93m  NOTE: same-switch h1↔h2 broke after s1-s2 failure — "
-                "flow cleanup deleted local flows!\033[0m"
-            )
         print("\033[91m=========================================\033[0m\n")
 
 

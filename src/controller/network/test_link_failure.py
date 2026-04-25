@@ -6,7 +6,26 @@ from mininet.log import setLogLevel, info
 
 
 def test_single_failure_recovery():
-    """Tests a simple ring topology where a primary link fails and traffic recovers."""
+    """
+    Single link failure and recovery in a ring topology.
+
+    Verifies that traffic reroutes through an alternate path when the
+    primary link fails, and returns to normal when the link is restored.
+
+    Topology: Ring
+        h1 - s1 - s2
+              \   /
+               s3
+               |
+              h2
+
+    Phases:
+    1. Baseline full connectivity.
+    2. Simulate failure on link s1-s2.
+    3. Verify connectivity via alternate path s1-s3.
+    4. Restore link s1-s2.
+    5. Final connectivity verification.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)
     net.addController("c0", ip="127.0.0.1", port=6653)
@@ -33,11 +52,11 @@ def test_single_failure_recovery():
     time.sleep(5)
 
     info("*** 1. Initial full connectivity test\n")
-    net.pingAll()
+    loss_initial = net.pingAll()
 
     info("*** 2. Simulating failure on link s1-s2\n")
     net.configLinkStatus("s1", "s2", "down")
-    time.sleep(3)  # Wait for controller fault handler
+    time.sleep(3)
 
     info("*** 3. Testing connectivity after failure (Should SUCCEED via s1-s3)\n")
     loss1 = net.pingAll()
@@ -52,13 +71,17 @@ def test_single_failure_recovery():
     net.stop()
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    if loss1 == 0.0 and loss2 == 0.0:
+    passed = loss_initial == 0.0 and loss1 == 0.0 and loss2 == 0.0
+
+    if passed:
         print("\n\033[92m=========================================\033[0m")
         print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
-        print(f"\033[91m      FAIL (Loss1: {loss1}%, Loss2: {loss2}%) \033[0m")
+        print(
+            f"\033[91m      FAIL (Initial: {loss_initial}%, Loss1: {loss1}%, Loss2: {loss2}%) \033[0m"
+        )
         print("\033[91m=========================================\033[0m\n")
 
 

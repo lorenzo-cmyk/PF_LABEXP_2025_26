@@ -9,7 +9,7 @@ def _move_host_ip(host, old_iface, new_iface, ip_cidr="10.0.0.1/8"):
     """Move a host's IP from one interface to another (simulates physical move)."""
     host.cmd(f"ip addr del {ip_cidr} dev {old_iface}")
     host.cmd(f"ip addr add {ip_cidr} dev {new_iface}")
-    host.cmd(f"arp -d 10.0.0.2 2>/dev/null")  # Flush peer ARP
+    host.cmd("arp -d 10.0.0.2 2>/dev/null")  # Flush peer ARP
 
 
 def _set_interface_mac(host, iface, mac):
@@ -99,17 +99,13 @@ def test_host_mobility_edge_port_purge():
 
     if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m   PASS (host mobility: edge purge OK)   \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  FAIL (Baseline: {loss_baseline}%, AfterMove: {loss_after_move}%) \033[0m"
+            f"\033[91m      FAIL (Baseline: {loss_baseline}%, AfterMove: {loss_after_move}%) \033[0m"
         )
-        if loss_after_move > 0:
-            print(
-                "\033[93m  NOTE: AfterMove>0% suggests edge-port purge didn't happen!\033[0m"
-            )
         print("\033[91m=========================================\033[0m\n")
 
 

@@ -7,8 +7,22 @@ from mininet.log import setLogLevel, info
 
 def test_rapid_flap_race_conditions():
     """
-    Edge Case: Race conditions and rapid state invalidation.
-    We rapidly toggle a link UP and DOWN.
+    Edge Case: Rapid link flapping and race conditions.
+
+    Verifies that the controller remains stable after multiple rapid
+    up/down transitions of a link, without state corruption.
+
+    Topology:
+        h1 - s1 - s2 - s3 - h2
+              \_______/
+
+    The s1-s2 link is flapped 5 times in quick succession. The backup
+    path s1-s3 must absorb traffic during the transient.
+
+    Phases:
+    1. Baseline connectivity.
+    2. Chaotic link flapping on s1-s2 (5 cycles, 0.5s interval).
+    3. Post-flap connectivity verification.
     """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

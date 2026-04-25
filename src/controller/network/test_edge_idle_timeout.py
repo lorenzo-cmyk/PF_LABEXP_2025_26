@@ -81,19 +81,14 @@ def test_flow_idle_timeout_and_reinstall():
 
     if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m  PASS (idle timeout → flow reinstall)   \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  FAIL (Initial: {loss_initial}%, AfterIdle: {loss_after_idle}%, "
+            f"\033[91m      FAIL (Initial: {loss_initial}%, AfterIdle: {loss_after_idle}%, "
             f"Reinstalled: {loss_reinstalled}%) \033[0m"
         )
-        if loss_after_idle > 0:
-            print(
-                "\033[93m  NOTE: AfterIdle>0% — controller failed to re-install "
-                "flows after silent expiry!\033[0m"
-            )
         print("\033[91m=========================================\033[0m\n")
 
 

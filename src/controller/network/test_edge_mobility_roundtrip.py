@@ -104,27 +104,14 @@ def test_host_mobility_round_trip():
 
     if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m  PASS (round-trip mobility works)       \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  FAIL (Baseline: {loss_baseline}%, Move1: {loss_move1}%, "
+            f"\033[91m      FAIL (Baseline: {loss_baseline}%, Move1: {loss_move1}%, "
             f"Move2: {loss_move2}%) \033[0m"
         )
-        if loss_move1 > 0 and loss_move2 == 0:
-            print(
-                "\033[93m  NOTE: First move failed but return worked — asymmetry!\033[0m"
-            )
-        elif loss_move1 == 0 and loss_move2 > 0:
-            print(
-                "\033[93m  NOTE: First move OK but return failed — "
-                "second purge or flow cleanup broken!\033[0m"
-            )
-        elif loss_move1 > 0 and loss_move2 > 0:
-            print(
-                "\033[93m  NOTE: Both moves failed — mobility not working at all!\033[0m"
-            )
         print("\033[91m=========================================\033[0m\n")
 
 

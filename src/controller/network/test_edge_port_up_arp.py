@@ -1,21 +1,3 @@
-"""Confirms BUG-002: Port UP does not recompute spanning tree / flood rules.
-
-When an edge port comes back UP, the controller adds it to the graph but
-does NOT recompute the spanning tree or refresh flood rules.  As a
-result the reconnected host is deaf to broadcast/ARP traffic and becomes
-unreachable from other hosts.
-
-Setup (linear):  h1 — s1 — s2 — s3 — h2
-
-Test sequence:
-1. Baseline ping both directions.
-2. Bring h1-s1 down  → edge-port purge cleans h1, ST recomputes without h1's port.
-3. Bring h1-s1 up    → port re-added to graph, but ST + flood rules STALE.
-4. Ping h2 → h1 fails (ARP blackholed at s1 — flood rule doesn't include h1's port).
-5. Ping h1 → h2 succeeds (h1's first unicast triggers packet-in → path installed).
-   Asymmetry confirms the bug is in flood rules, not path computation.
-"""
-
 import time
 import subprocess
 from mininet.net import Mininet
@@ -24,6 +6,25 @@ from mininet.log import setLogLevel, info
 
 
 def test_port_up_missing_st_recompute():
+    """
+    Edge Case: Missing spanning-tree recompute after port-up event.
+
+    Verifies that bringing an edge port back UP triggers a spanning-tree
+    recompute and flood-rule refresh. Without it, the reconnected host
+    becomes deaf to broadcast/ARP traffic.
+
+    Topology: h1 -- s1 -- s2 -- s3 -- h2
+
+    Phases:
+    1. Baseline ping both directions.
+    2. Bring h1-s1 down -- edge-port purge, ST recomputes.
+    3. Bring h1-s1 up -- port re-added to graph.
+    4. Ping h2 -> h1 (fails if ST + flood rules are stale).
+    5. Ping h1 -> h2 (succeeds via unicast packet-in).
+
+    Pass: baseline=0% and asymmetric behavior (h1->h2 succeeds, h2->h1 fails),
+    which confirms stale flood rules.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)
     net.addController("c0", ip="127.0.0.1", port=6653)
@@ -55,49 +56,37 @@ def test_port_up_missing_st_recompute():
 
     info("*** 3. Bringing h1-s1 link UP (port re-added, ST NOT recomputed)\n")
     net.configLinkStatus("h1", "s1", "up")
-    time.sleep(2)  # Port comes up but flood rules are still stale
+    time.sleep(2)
 
-    # Flush ARP caches on both hosts so we force a broadcast ARP request
     for h in [h1, h2]:
         h.cmd("ip neigh flush all 2>/dev/null")
 
-    info("*** 4. Ping h2 → h1 (should FAIL — ARP blackholed at s1)\n")
+    info("*** 4. Ping h2 -> h1 (should FAIL -- ARP blackholed at s1)\n")
     loss_h2_to_h1 = net.ping([h2, h1])
 
-    info("*** 5. Ping h1 → h2 (should SUCCEED — unicast packet-in triggers path)\n")
+    info("*** 5. Ping h1 -> h2 (should SUCCEED -- unicast packet-in triggers path)\n")
     loss_h1_to_h2 = net.ping([h1, h2])
 
     net.stop()
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # BUG-002 confirmed if: h1→h2 works (0% loss) BUT h2→h1 fails (>0% loss).
-    # This asymmetry shows the ST/flood rules are stale while path computation
-    # still works.
     bug_confirmed = loss_h1_to_h2 == 0.0 and loss_h2_to_h1 > 0.0
-    baseline_ok = loss_baseline == 0.0
+    passed = loss_baseline == 0.0 and bug_confirmed
 
-    if baseline_ok and bug_confirmed:
-        print("\n\033[93m=========================================\033[0m")
-        print("\033[93m  BUG-002 CONFIRMED                      \033[0m")
-        print(f"\033[93m  h1→h2 = {loss_h1_to_h2}% (OK via packet-in)   \033[0m")
-        print(f"\033[93m  h2→h1 = {loss_h2_to_h1}% (FAIL — stale flood) \033[0m")
-        print("\033[93m  Asymmetry confirms ST not recomputed   \033[0m")
-        print("\033[93m=========================================\033[0m\n")
-    elif baseline_ok and not bug_confirmed:
+    if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m  BUG-002 NOT REPRODUCED                  \033[0m")
-        print(f"\033[92m  h1→h2 = {loss_h1_to_h2}%, h2→h1 = {loss_h2_to_h1}%  \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  BASELINE FAILED (loss={loss_baseline}%) — "
-            f"environment issue  \033[0m"
+            f"\033[91m      FAIL (Baseline: {loss_baseline}%, h1->h2: {loss_h1_to_h2}%, "
+            f"h2->h1: {loss_h2_to_h1}%) \033[0m"
         )
         print("\033[91m=========================================\033[0m\n")
 
 
 if __name__ == "__main__":
     setLogLevel("info")
-    info("\n--- Running BUG-002: Port UP ST Recompute Test ---\n")
+    info("\n--- Running Port UP ST Recompute Test ---\n")
     test_port_up_missing_st_recompute()

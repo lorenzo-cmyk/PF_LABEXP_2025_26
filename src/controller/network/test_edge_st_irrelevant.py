@@ -7,7 +7,23 @@ from mininet.log import setLogLevel, info
 
 def test_st_irrelevant_link():
     """
-    Edge Case: Unrelated path faults.
+    Edge Case: Unrelated path fault isolation.
+
+    Verifies that a fault on a link not used by the active flows does
+    not disrupt existing connectivity.
+
+    Topology:
+        h1 - s1 - s2 - h2
+             |
+             s3 - s4
+
+    Active flows between h1 and h2 use the direct s1-s2 path. The s3-s4
+    link is irrelevant to this communication.
+
+    Phases:
+    1. Baseline ping (installs optimal flows via s1-s2).
+    2. Take down irrelevant link s3-s4.
+    3. Verify post-failure connectivity is unaffected.
     """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)
@@ -38,11 +54,11 @@ def test_st_irrelevant_link():
     info("*** 1. Verify initial connectivity (installs optimal flows)\n")
     loss_initial = net.pingAll()
 
-    info("*** 3. Taking down an irrelevant link (s3-s4)\n")
+    info("*** 2. Taking down an irrelevant link (s3-s4)\n")
     net.configLinkStatus("s3", "s4", "down")
     time.sleep(3)
 
-    info("*** 4. Verify post-failure connectivity (flows on s1-s2 should be intact)\n")
+    info("*** 3. Verify post-failure connectivity (flows on s1-s2 should be intact)\n")
     loss_final = net.pingAll()
 
     net.stop()

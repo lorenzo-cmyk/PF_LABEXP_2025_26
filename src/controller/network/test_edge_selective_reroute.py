@@ -112,20 +112,15 @@ def test_selective_reroute_multi_pair():
 
     if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m  PASS (selective reroute, multi-pair)   \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  FAIL (Baseline: {loss_baseline}%, 12: {loss_12}%, 13: {loss_13}%, "
-            f"23: {loss_23}% | After→12: {loss_12_after}%, 13: {loss_13_after}%, "
-            f"23: {loss_23_after}% | Final: {loss_final}%) \033[0m"
+            f"\033[91m      FAIL (Baseline: {loss_baseline}%, 12: {loss_12}%, 13: {loss_13}%, "
+            f"23: {loss_23}%, After12: {loss_12_after}%, After13: {loss_13_after}%, "
+            f"After23: {loss_23_after}%, Final: {loss_final}%) \033[0m"
         )
-        if loss_12_after > 0:
-            print(
-                "\033[93m  NOTE: h1↔h2 broke after s3-s4 failure — "
-                "RouteTracker deleted wrong flows!\033[0m"
-            )
         print("\033[91m=========================================\033[0m\n")
 
 

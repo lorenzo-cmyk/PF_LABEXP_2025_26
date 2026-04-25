@@ -7,11 +7,26 @@ from mininet.log import setLogLevel, info
 
 def test_simultaneous_link_failures():
     """
-    Edge Case: Concurrency stress testing.
-    Topology: s1 connected to s2 via 3 independent parallel paths (s3, s4, s5).
-    We take down two of those paths at the precise same moment to check if the
-    controller's FaultHandler and PathComputer avoid race conditions when handling
-    concurrent port-down and LLDP-timeout events.
+    Edge Case: Concurrency stress testing with simultaneous link failures.
+
+    Tests that the controller handles concurrent port-down events without
+    race conditions when multiple redundant paths fail at the same time.
+
+    Topology: Three parallel paths between s1 and s2
+        h1 - s1 - s3 - s2 - h2
+             |         |
+             +-- s4 --+
+             |         |
+             +-- s5 --+
+
+    Two paths fail simultaneously; traffic must shift cleanly to the
+    surviving path.
+
+    Phases:
+    1. Baseline connectivity.
+    2. Simultaneous failure of Path A (s1-s3) and Path B (s1-s4).
+    3. Verify traffic shifted to Path C (s1-s5-s2).
+    4. Kill Path C (s5-s2) -- creates isolation (100% loss).
     """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)
@@ -19,9 +34,9 @@ def test_simultaneous_link_failures():
 
     s1 = net.addSwitch("s1", dpid="0000000000000001")
     s2 = net.addSwitch("s2", dpid="0000000000000002")
-    s3 = net.addSwitch("s3", dpid="0000000000000003")
-    s4 = net.addSwitch("s4", dpid="0000000000000004")
-    s5 = net.addSwitch("s5", dpid="0000000000000005")
+    s3 = net.addSwitch("s3", dpid="0000000000000003")  # noqa: F841
+    s4 = net.addSwitch("s4", dpid="0000000000000004")  # noqa: F841
+    s5 = net.addSwitch("s5", dpid="0000000000000005")  # noqa: F841
 
     h1 = net.addHost("h1", ip="10.0.0.1", mac="00:00:00:00:00:01")
     h2 = net.addHost("h2", ip="10.0.0.2", mac="00:00:00:00:00:02")

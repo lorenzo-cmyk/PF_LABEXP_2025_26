@@ -7,8 +7,27 @@ from mininet.log import setLogLevel, info
 
 def test_multi_failure():
     """
-    Creates a full mesh with 3 switches and 3 hosts.
-    Progressively disables links to observe routing behavior.
+    Progressive multiple link failures in a full mesh.
+
+    Tests routing behavior as links are progressively disabled until
+    one host is completely isolated.
+
+    Topology: Full mesh
+         s1 --- s2
+        /  \   /  \
+      h1    \ /    h2
+             s3
+             |
+            h3
+
+    Phases:
+    1. Baseline full connectivity ping.
+    2. First failure: s1-s2 down (traffic reroutes via s3).
+    3. Second failure: s1-s3 down (h1 isolated).
+    4. Test isolated h1 to h2 -- expected to fail (100% loss).
+    5. Test surviving fragment h2 to h3 -- expected to succeed.
+    6. Restore s1-s2.
+    7. Final full connectivity verification.
     """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

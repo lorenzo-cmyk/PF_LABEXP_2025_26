@@ -86,21 +86,14 @@ def test_stale_host_cleanup_on_link_add():
 
     if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m  PASS (stale host cleanup on LinkAdd)   \033[0m")
-        if loss_early > 0:
-            print("\033[93m  (Early ping failed as expected — race caught) \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  FAIL (Early: {loss_early}%, After: {loss_after}%, "
+            f"\033[91m      FAIL (Early: {loss_early}%, After: {loss_after}%, "
             f"Stable: {loss_stable}%) \033[0m"
         )
-        if loss_after > 0:
-            print(
-                "\033[93m  NOTE: Post-discovery ping failed — "
-                "stale host cleanup on LinkAdd is broken!\033[0m"
-            )
         print("\033[91m=========================================\033[0m\n")
 
 

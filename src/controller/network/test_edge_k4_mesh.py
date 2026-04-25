@@ -7,10 +7,25 @@ from mininet.log import setLogLevel, info
 
 def test_k4_mesh_storm_resilience():
     """
-    Edge Case: K4 Full Mesh (Highly connected graph).
-    Tests if the Spanning Tree algorithm can handle massive loop redundancy
-    (6 links for 4 switches) without creating broadcast storms that would
-    paralyze the network and cause ping dropouts.
+    Edge Case: K4 full mesh storm resilience.
+
+    Tests if the spanning-tree algorithm can handle a highly connected
+    graph (6 links for 4 switches) without creating broadcast storms.
+
+    Topology: K4 full mesh
+        h1 - s1 --- s2 - h2
+             | \   / |
+             |  \ /  |
+             s3 --- s4
+             |      |
+            h3     h4
+
+    Each switch has one directly attached host.
+
+    Phases:
+    1. K4 mesh ping-all (ST must prune 3 of 6 links).
+    2. Slice graph (s1-s2 and s3-s4 down), forcing ST reconvergence.
+    3. Re-test after massive ST reconvergence.
     """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

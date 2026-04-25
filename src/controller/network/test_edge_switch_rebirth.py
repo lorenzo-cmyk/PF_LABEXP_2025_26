@@ -86,12 +86,12 @@ def test_switch_death_and_rebirth():
 
     if passed:
         print("\n\033[92m=========================================\033[0m")
-        print("\033[92m      PASS (switch rebirth successful)   \033[0m")
+        print("\033[92m                 PASS                    \033[0m")
         print("\033[92m=========================================\033[0m\n")
     else:
         print("\n\033[91m=========================================\033[0m")
         print(
-            f"\033[91m  FAIL (Baseline: {loss_baseline}%, Dead: {loss_partitioned}%, "
+            f"\033[91m      FAIL (Baseline: {loss_baseline}%, Dead: {loss_partitioned}%, "
             f"Rejoin: {loss_rejoined}%, Stable: {loss_stable}%) \033[0m"
         )
         print("\033[91m=========================================\033[0m\n")

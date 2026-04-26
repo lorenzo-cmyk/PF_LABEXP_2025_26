@@ -9,6 +9,7 @@ from host_tracker import HostTracker
 from path_computer import PathComputer
 from route_tracker import RouteTracker
 from flow_installer import FlowInstaller
+from policy_manager import PolicyManager
 from topology import LinkKey
 
 LOG = logging.getLogger(__name__)
@@ -17,7 +18,9 @@ LOG = logging.getLogger(__name__)
 class ForwardingPlane:
     """Decides which path to use and coordinates installation.
 
-    For GOAL 1: always uses default shortest-path (no policy plane yet).
+    Checks ``PolicyManager`` first: if a user-pinned path exists for the
+    pair, it is installed with high priority and no idle timeout. Otherwise
+    the default shortest-path is used.
     """
 
     def __init__(
@@ -26,11 +29,13 @@ class ForwardingPlane:
         route_tracker: RouteTracker,
         flow_installer: FlowInstaller,
         host_tracker: HostTracker,
+        policy_mgr: PolicyManager,
     ) -> None:
         self.path_computer = path_computer
         self.route_tracker = route_tracker
         self.flow_installer = flow_installer
         self.host_tracker = host_tracker
+        self.policy_mgr = policy_mgr
         # Wire host tracker reference into flow installer for edge port lookup
         self.flow_installer._host_tracker = host_tracker
 
@@ -95,6 +100,33 @@ class ForwardingPlane:
                 hex(src_dpid),
             )
             self.flow_installer.install_path([src_dpid], src_mac, dst_mac)
+            self.flow_installer.install_path([src_dpid], dst_mac, src_mac)
+            return True
+
+        # Check for a user-pinned policy path first
+        policy_path = self.policy_mgr.get_policy_path(src_mac, dst_mac)
+        if policy_path is not None:
+            dpids = [policy_path[0].src_dpid]
+            for lk in policy_path:
+                dpids.append(lk.dst_dpid)
+            LOG.info(
+                "Forwarding: using POLICY path %s → %s: %s",
+                src_mac,
+                dst_mac,
+                " → ".join(hex(d) for d in dpids),
+            )
+            # Install forward + reverse (sink-to-source, high priority, no timeout)
+            links = self.flow_installer.install_path(
+                dpids, src_mac, dst_mac, is_policy=True
+            )
+            reverse_dpids = list(reversed(dpids))
+            reverse_links = self.flow_installer.install_path(
+                reverse_dpids, dst_mac, src_mac, is_policy=True
+            )
+            if links:
+                self.route_tracker.add_route(src_mac, dst_mac, links)
+            if reverse_links:
+                self.route_tracker.add_route(dst_mac, src_mac, reverse_links)
             return True
 
         # Compute shortest path

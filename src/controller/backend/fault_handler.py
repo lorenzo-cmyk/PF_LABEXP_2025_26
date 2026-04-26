@@ -8,6 +8,7 @@ from topology import LinkKey, TopologyGraph, TopologyManager
 from spanning_tree import SpanningTreeManager
 from forwarding_plane import ForwardingPlane
 from flow_installer import FlowInstaller
+from policy_manager import PolicyManager
 
 LOG = logging.getLogger(__name__)
 
@@ -22,12 +23,14 @@ class FaultHandler:
         st_mgr: SpanningTreeManager,
         forwarding: ForwardingPlane,
         flow_installer: FlowInstaller,
+        policy_mgr: PolicyManager,
     ) -> None:
         self.graph = graph
         self.topo_mgr = topo_mgr
         self.st_mgr = st_mgr
         self.forwarding = forwarding
         self.flow_installer = flow_installer
+        self.policy_mgr = policy_mgr
 
     def handle_port_down(self, dpid: int, port: int) -> None:
         """React to a port going down.
@@ -89,6 +92,7 @@ class FaultHandler:
 
         if link is not None:
             self.forwarding.handle_link_failure(link)
+            self.policy_mgr.mark_all_affected_broken(link)
 
         # Recompute spanning tree and update flood rules
         self._refresh_flood_topology()
@@ -106,6 +110,7 @@ class FaultHandler:
 
         self.graph.remove_link(link)
         self.forwarding.handle_link_failure(link)
+        self.policy_mgr.mark_all_affected_broken(link)
         self._refresh_flood_topology()
 
         LOG.info(

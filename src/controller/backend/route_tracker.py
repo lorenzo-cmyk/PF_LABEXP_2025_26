@@ -93,6 +93,12 @@ class RouteTracker:
         LOG.debug("RouteTracker: links for %s → %s = %d", src_mac, dst_mac, len(links))
         return links
 
+    @property
+    def all_routes(self) -> dict[tuple[str, str], list[LinkKey]]:
+        """Return a snapshot of all tracked routes."""
+        with self._lock:
+            return {pair: list(links) for pair, links in self._pair_to_links.items()}
+
     def clear(self) -> None:
         """Remove all tracked routes (used on full topology reset)."""
         with self._lock:

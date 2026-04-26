@@ -19,6 +19,7 @@ LOG = logging.getLogger(__name__)
 # Default idle timeout for regular (non-policy) flows in seconds.
 DEFAULT_IDLE_TIMEOUT = 30
 # Table 0 priority levels
+PRIORITY_POLICY = 20
 PRIORITY_DEFAULT = 10
 PRIORITY_FLOOD = 1
 # Cookie mask for identifying flood rules
@@ -52,6 +53,11 @@ class FlowInstaller:
             len(self._datapaths),
         )
 
+    @property
+    def datapaths(self) -> dict[int, Datapath]:
+        """Return the full dict of connected datapaths (for external polling)."""
+        return dict(self._datapaths)
+
     def get_dp(self, dpid: int) -> Optional[Datapath]:
         """Return the Datapath handle for *dpid*, or None if not connected."""
         return self._datapaths.get(dpid)
@@ -74,6 +80,7 @@ class FlowInstaller:
         packet-in events handle the rest safely.
         """
         timeout = 0 if is_policy else DEFAULT_IDLE_TIMEOUT
+        priority = PRIORITY_POLICY if is_policy else PRIORITY_DEFAULT
         path_str = " → ".join(hex(d) for d in path)
         LOG.info(
             "FlowInstaller: install_path %s → %s via [%s] (timeout=%d, policy=%s)",
@@ -91,7 +98,7 @@ class FlowInstaller:
                 if dp:
                     out_port = self._find_edge_port(path[0], src_mac, dst_mac)
                     if out_port is not None:
-                        self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
+                        self._add_flow(dp, dst_mac, out_port, timeout, priority)
                         LOG.info(
                             "FlowInstaller: single-switch flow dpid=%s dst=%s port=%d",
                             hex(path[0]),
@@ -119,7 +126,7 @@ class FlowInstaller:
                 # ── Sink switch: output to edge port (host-facing) ──
                 out_port = self._find_edge_port(dpid, src_mac, dst_mac)
                 if out_port is not None:
-                    self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
+                    self._add_flow(dp, dst_mac, out_port, timeout, priority)
                     LOG.info(
                         "FlowInstaller:   [sink] dpid=%s eth_dst=%s → port=%d (edge)",
                         hex(dpid),
@@ -137,7 +144,7 @@ class FlowInstaller:
                 next_dpid = path[i + 1]
                 out_port = self.graph.get_port_for_peer(dpid, next_dpid)
                 if out_port is not None:
-                    self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
+                    self._add_flow(dp, dst_mac, out_port, timeout, priority)
                     LOG.info(
                         "FlowInstaller:   [mid]  dpid=%s eth_dst=%s → port=%d (→ %s)",
                         hex(dpid),
@@ -170,7 +177,7 @@ class FlowInstaller:
         dp = self._datapaths.get(src_dpid)
         out_port = self.graph.get_port_for_peer(src_dpid, next_dpid)
         if dp and out_port is not None:
-            self._add_flow(dp, dst_mac, out_port, timeout, PRIORITY_DEFAULT)
+            self._add_flow(dp, dst_mac, out_port, timeout, priority)
             LOG.info(
                 "FlowInstaller:   [src]  dpid=%s eth_dst=%s → port=%d (→ %s)",
                 hex(src_dpid),

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 
+import eventlet
+
 from os_ken.base import app_manager
 from os_ken.controller import ofp_event
 from os_ken.controller.handler import (
@@ -33,6 +35,7 @@ from flow_installer import FlowInstaller
 from forwarding_plane import ForwardingPlane
 from fault_handler import FaultHandler
 from policy_manager import PolicyManager
+from stats_collector import StatsCollector
 from rest_api import RestAPI
 
 LOG = logging.getLogger(__name__)
@@ -58,11 +61,20 @@ class Backend(app_manager.OSKenApp):
         self.path_computer = PathComputer(self.graph)
         self.route_tracker = RouteTracker()
         self.flow_installer = FlowInstaller(self.graph)
+
+        # PolicyManager — must exist before ForwardingPlane / FaultHandler
+        self.policy_mgr = PolicyManager(
+            flow_installer=self.flow_installer,
+            host_tracker=self.host_tracker,
+            route_tracker=self.route_tracker,
+        )
+
         self.forwarding = ForwardingPlane(
             self.path_computer,
             self.route_tracker,
             self.flow_installer,
             self.host_tracker,
+            self.policy_mgr,
         )
         self.fault_handler = FaultHandler(
             self.graph,
@@ -70,15 +82,31 @@ class Backend(app_manager.OSKenApp):
             self.st_mgr,
             self.forwarding,
             self.flow_installer,
+            self.policy_mgr,
         )
-        self.policy_mgr = PolicyManager()  # stub for GOAL 1
-        self.rest_api = RestAPI()  # stub for GOAL 1
+
+        # StatsCollector — periodic port counter polling
+        self.stats_collector = StatsCollector(poll_interval=5.0)
+        self.stats_collector.set_datapaths_cb(
+            lambda: list(self.flow_installer.datapaths.values())
+        )
+
+        # RestAPI — user-facing HTTP interface
+        self.rest_api = RestAPI(
+            graph=self.graph,
+            host_tracker=self.host_tracker,
+            path_computer=self.path_computer,
+            route_tracker=self.route_tracker,
+            policy_mgr=self.policy_mgr,
+            stats_collector=self.stats_collector,
+            spanning_tree=self.st_mgr,
+        )
 
         # Track which switches have had their ports registered.
-        # os-ken's switches app populates dp.ports via EventOFPPortDescStatsReply
-        # (which we can't reliably intercept), so we lazily read dp.ports on
-        # first packet-in or link event.
         self._ports_initialized: set[int] = set()
+
+        # Launch background services once the os-ken event loop starts
+        eventlet.spawn_after(0.0, self._start_services)
 
         LOG.info("Backend ready — waiting for switches to connect")
         LOG.info("=" * 60)
@@ -137,6 +165,7 @@ class Backend(app_manager.OSKenApp):
                 if surviving_dpid != dpid:
                     self.flow_installer.delete_flows_for_mac(surviving_dpid, dst_mac)
                     self.flow_installer.delete_flows_for_mac(surviving_dpid, src_mac)
+            self.policy_mgr.mark_broken(src_mac, dst_mac)
 
         # Purge hosts that were attached to the dead switch
         removed_hosts = []
@@ -309,7 +338,7 @@ class Backend(app_manager.OSKenApp):
             LOG.warning(
                 "PacketIn: path installed but couldn't find output port — flooding"
             )
-            flood_ports = self.st_mgr.flood_ports(dpid)
+            flood_ports = self.st_mgr.flood_ports(dpid) - {in_port}
             self.flow_installer.flood_packet_out(
                 dp, in_port, flood_ports, msg.data, msg.buffer_id
             )
@@ -319,7 +348,7 @@ class Backend(app_manager.OSKenApp):
                 "PacketIn: path NOT installed (unknown/unreachable dst %s) — flooding",
                 dst_mac,
             )
-            flood_ports = self.st_mgr.flood_ports(dpid)
+            flood_ports = self.st_mgr.flood_ports(dpid) - {in_port}
             self.flow_installer.flood_packet_out(
                 dp, in_port, flood_ports, msg.data, msg.buffer_id
             )
@@ -371,6 +400,7 @@ class Backend(app_manager.OSKenApp):
                 removed_dst,
             )
 
+        self.path_computer.invalidate()
         self.st_mgr.compute()
         self._install_all_flood_rules()
         LOG.info("<<< Topology updated — ST recomputed, flood rules refreshed")
@@ -393,6 +423,13 @@ class Backend(app_manager.OSKenApp):
         )
         self.fault_handler.handle_link_down(lk)
         LOG.info("<<< Link failure handled")
+
+    # ── Port stats reply ─────────────────────────────────────────────
+
+    @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
+    def _port_stats_reply_handler(self, ev) -> None:
+        """Delegate port stats replies to StatsCollector."""
+        self.stats_collector.on_stats_reply(ev.msg)
 
     # ── Port initialization helper ───────────────────────────────────
 
@@ -466,3 +503,14 @@ class Backend(app_manager.OSKenApp):
             switch_count,
             len(self.graph.switches),
         )
+
+    def _start_services(self) -> None:
+        """Launch background services from the os-ken event loop.
+
+        StatsCollector runs as an Eventlet greenthread; RestAPI runs in a
+        dedicated daemon thread to keep its asyncio loop isolated.
+        """
+        LOG.info("Backend: launching background services")
+        eventlet.spawn_after(0.0, self.stats_collector._poll_loop)
+        self.rest_api.start(host="0.0.0.0", port=8080)
+        LOG.info("Backend: background services started")

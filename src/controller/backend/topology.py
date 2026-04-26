@@ -50,7 +50,7 @@ class TopologyGraph:
 
     def __init__(self) -> None:
         self._graph = nx.Graph()
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._edge_ports: set[tuple[int, int]] = set()
         self._switch_ports: dict[int, set[int]] = {}
         self._known_internal_ports: set[tuple[int, int]] = set()

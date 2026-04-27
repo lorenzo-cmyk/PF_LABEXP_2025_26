@@ -271,15 +271,13 @@ current spanning-tree edges.
       { "src_dpid": 1, "src_port": 2, "dst_dpid": 2, "dst_port": 1 }
     ],
     "hosts": [
-      { "mac": "00:00:00:00:00:01", "ip": "10.0.0.0", "dpid": 1, "port": 1 }
+      { "mac": "00:00:00:00:00:01", "dpid": 1, "port": 1 }
     ],
     "spanning_tree": [
       { "src_dpid": 1, "src_port": 2, "dst_dpid": 2, "dst_port": 1 }
     ]
   }
   ```
-  Note: `ip` is a placeholder — the controller is L2-only and does not track
-  IP addresses.
 
 ---
 

@@ -418,7 +418,7 @@ class RestAPI:
 
             hosts_snapshot = api._host_tracker.hosts
             hosts = [
-                {"mac": mac, "ip": "10.0.0.0", "dpid": loc.dpid, "port": loc.port}
+                {"mac": mac, "dpid": loc.dpid, "port": loc.port}
                 for mac, loc in hosts_snapshot.items()
             ]
 

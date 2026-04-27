@@ -65,6 +65,14 @@ class HostTracker:
                 )
                 old_loc = prev
             else:
+                if not self._is_edge_port(dpid, port):
+                    LOG.warning(
+                        "HostTracker: ignoring %s at dpid=%s port=%d (internal, new)",
+                        mac,
+                        hex(dpid),
+                        port,
+                    )
+                    return None
                 old_loc = None
             self._table[mac] = HostLocation(dpid, port)
         LOG.info(

@@ -290,10 +290,10 @@ class Backend(app_manager.OSKenApp):
             return
 
         # ── Path 1: broadcast / multicast → flood on spanning tree ────
-        # ``int(dst_mac, 16) & 1`` checks the multicast bit (least
-        # significant bit of the first octet).  Exclude in_port so the
-        # packet isn't sent back where it came from.
-        if dst_mac == "ff:ff:ff:ff:ff:ff" or int(dst_mac.replace(":", ""), 16) & 1:
+        # Check the multicast bit: least significant bit of the FIRST
+        # octet of the destination MAC.  Exclude in_port so the packet
+        # isn't sent back where it came from.
+        if dst_mac == "ff:ff:ff:ff:ff:ff" or int(dst_mac[:2], 16) & 1:
             flood_ports = self.st_mgr.flood_ports(dpid) - {in_port}
             LOG.debug(
                 "PacketIn: BROADCAST %s → %s on dpid=%s port=%d → flood ports=%s",

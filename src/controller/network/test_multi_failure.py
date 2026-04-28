@@ -54,6 +54,9 @@ def test_multi_failure():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     info("*** Waiting for discovery\n")
     time.sleep(5)
 

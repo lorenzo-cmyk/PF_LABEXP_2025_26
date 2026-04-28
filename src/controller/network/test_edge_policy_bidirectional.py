@@ -102,6 +102,9 @@ def test_bidirectional_policy():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     info("*** Waiting for topology discovery\n")
     time.sleep(6)
     info("*** Pinging to learn hosts\n")

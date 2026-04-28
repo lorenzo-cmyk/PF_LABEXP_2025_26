@@ -53,6 +53,9 @@ def test_k4_mesh_storm_resilience():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     info("*** Waiting for discovery (Spanning tree must prune 3 links logically)\n")
     time.sleep(5)
 

@@ -69,6 +69,9 @@ def test_same_switch_and_cross_switch_mixed():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     info("*** Waiting for discovery\n")
     time.sleep(5)
 

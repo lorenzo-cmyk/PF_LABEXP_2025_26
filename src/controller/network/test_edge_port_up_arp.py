@@ -45,6 +45,9 @@ def test_port_up_triggers_st_recompute():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     info("*** Waiting for topology discovery\n")
     time.sleep(5)
 

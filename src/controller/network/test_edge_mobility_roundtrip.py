@@ -69,6 +69,9 @@ def test_host_mobility_round_trip():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     # Ensure h1-eth1 uses the same MAC as h1-eth0
     _set_interface_mac(h1, "h1-eth1", MAC_H1)
 

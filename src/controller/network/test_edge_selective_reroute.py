@@ -63,6 +63,9 @@ def test_selective_reroute_multi_pair():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     info("*** Waiting for discovery\n")
     time.sleep(5)
 

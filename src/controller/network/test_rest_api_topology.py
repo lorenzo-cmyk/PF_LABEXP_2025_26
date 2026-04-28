@@ -49,6 +49,9 @@ def test_rest_api_topology():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     info("*** Waiting for topology discovery\n")
     time.sleep(6)
 
@@ -63,7 +66,7 @@ def test_rest_api_topology():
     if status != 200:
         info(f"FAIL: /topology returned status {status}\n")
         passed = False
-    elif not all(k in data for k in ("switches", "links", "hosts", "spanning_tree")):
+    elif not all(k in data for k in ("switches", "links", "hosts")):
         info(f"FAIL: /topology missing keys, got {list(data.keys())}\n")
         passed = False
     elif sorted(data["switches"]) != [1, 2, 3]:

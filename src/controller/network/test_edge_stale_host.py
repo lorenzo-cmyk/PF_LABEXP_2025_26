@@ -59,6 +59,9 @@ def test_stale_host_cleanup_on_link_add():
     net.build()
     net.start()
 
+    info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
+    net.pingAll()
+
     # DELIBERATELY SHORT WAIT — race against LLDP discovery.
     # 1 second is enough for switches to connect and ports to initialize,
     # but LLDP link discovery may still be in progress.

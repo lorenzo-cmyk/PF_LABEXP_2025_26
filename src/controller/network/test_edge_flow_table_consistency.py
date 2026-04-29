@@ -46,24 +46,6 @@ def _api_post(path: str, body: dict) -> tuple[int, dict | None]:
         return -1, None
 
 
-def _api_post(path: str, body: dict) -> tuple[int, dict | None]:
-    url = f"{API_BASE}{path}"
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status, json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        try:
-            return e.code, json.loads(body)
-        except ValueError:
-            return e.code, {"detail": body}
-    except urllib.error.URLError:
-        return -1, None
-
-
 def _api_delete(path: str) -> tuple[int, dict | None]:
     url = f"{API_BASE}{path}"
     req = urllib.request.Request(url, method="DELETE")
@@ -211,9 +193,10 @@ def test_flow_table_consistency():
                 )
             else:
                 info(
-                    f"       WARN: API flow dst={match_dst} prio={match_prio} "
+                    f"       FAIL: API flow dst={match_dst} prio={match_prio} "
                     f"port={match_port} not found in ofctl\n"
                 )
+                passed = False
 
     # ── Phase 2: Install policy and re-check ──────────────────────────
     info("*** [3] POST policy: h1→h2 via s1→s2→s3\n")

@@ -270,15 +270,17 @@ class Backend(app_manager.OSKenApp):
         if dst_mac == LLDP_MAC:
             return
 
-        # ── Learn source host from packet (edge ports only) ─────────
+        # ── Learn source host from packet ─────────────────────────────
         # os-ken's host_discovery_packet_in_handler already detected the
         # host location and enqueued an EventHostMove/EventHostAdd *before*
         # this handler runs.  That event has NOT been dispatched yet, so
         # our HostTracker may still be blind to this host (e.g. after an
         # edge-port purge).  Learn it here synchronously so the rest of
         # this handler (add_ip, forwarding) sees the current location.
+        # We also learn on a known-internal port whose link is currently
+        # down — the host may have moved to it (mobility scenario).
         if not (src_mac == "ff:ff:ff:ff:ff:ff" or int(src_mac[:2], 16) & 1):
-            if (dpid, in_port) in self.graph.edge_ports:
+            if not self.graph.is_port_connected(dpid, in_port):
                 self.host_tracker.add_host(src_mac, dpid, in_port)
 
         # ── ARP processing ───────────────────────────────────────────

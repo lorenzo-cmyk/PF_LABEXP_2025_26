@@ -55,6 +55,8 @@ class FaultHandler:
         )
 
         link = self.topo_mgr.resolve_link(dpid, port)
+        is_internal = self.graph.is_known_internal(dpid, port)
+
         if link:
             LOG.info(
                 "FaultHandler: resolved to link %s:%d → %s:%d",
@@ -62,6 +64,13 @@ class FaultHandler:
                 link.src_port,
                 hex(link.dst_dpid),
                 link.dst_port,
+            )
+        elif is_internal:
+            LOG.info(
+                "FaultHandler: port %s:%d was a link port (link already torn by peer "
+                "— skipping edge-port cleanup)",
+                hex(dpid),
+                port,
             )
         else:
             LOG.info(
@@ -71,7 +80,7 @@ class FaultHandler:
             )
 
         # ── Edge port: purge hosts and their flows ───────────────────
-        if link is None:
+        if link is None and not is_internal:
             removed = self.forwarding.host_tracker.remove_by_port(dpid, port)
             if removed:
                 LOG.info(

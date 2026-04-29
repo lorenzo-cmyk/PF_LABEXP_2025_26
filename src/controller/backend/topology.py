@@ -44,12 +44,13 @@ class TopologyGraph:
     """Pure Python graph model of the network. Thread-safe via a single lock.
 
     Nodes: dpid (int)
-    Edges: (dpid_a, dpid_b) with attributes storing both port numbers.
+    Edges: (dpid_a, dpid_b, key) with attributes storing both port numbers.
+      Uses ``nx.MultiGraph`` so multiple parallel links per switch pair coexist.
     Edge ports (host-facing) are tracked as a set of ``(dpid, port_no)`` tuples.
     """
 
     def __init__(self) -> None:
-        self._graph = nx.Graph()
+        self._graph = nx.MultiGraph()
         self._lock = threading.RLock()
         self._edge_ports: set[tuple[int, int]] = set()
         self._switch_ports: dict[int, set[int]] = {}
@@ -109,25 +110,24 @@ class TopologyGraph:
     def remove_port(self, dpid: int, port_no: int) -> None:
         """Remove a port from a switch and tear down any link involving it.
 
-        Iterates all graph edges to find the one that uses *port_no* on
-        *dpid*, then removes both the edge marking and the graph edge.
+        Iterates all graph edges (now with keys) to find the one that uses
+        *port_no* on *dpid*, then removes both the edge marking and the
+        specific graph edge (by key, leaving other parallel links intact).
         """
         removed_links: list[str] = []
         with self._lock:
             self._switch_ports.get(dpid, set()).discard(port_no)
             self._edge_ports.discard((dpid, port_no))
             edges_to_remove = []
-            # Each edge stores dpid_a/dpid_b, port_a/port_b in a canonical
-            # order (lower dpid first).  We must check both orientations.
-            for u, v, data in self._graph.edges(data=True):
+            for u, v, key, data in self._graph.edges(data=True, keys=True):
                 port_u = data["port_a"] if data["dpid_a"] == u else data["port_b"]
                 port_v = data["port_b"] if data["dpid_a"] == u else data["port_a"]
                 if (u == dpid and port_u == port_no) or (
                     v == dpid and port_v == port_no
                 ):
-                    edges_to_remove.append((u, v))
-            for u, v in edges_to_remove:
-                self._graph.remove_edge(u, v)
+                    edges_to_remove.append((u, v, key))
+            for u, v, key in edges_to_remove:
+                self._graph.remove_edge(u, v, key=key)
                 removed_links.append(f"{hex(u)}↔{hex(v)}")
         if removed_links:
             LOG.warning(
@@ -144,8 +144,8 @@ class TopologyGraph:
     def add_link(self, link: LinkKey) -> None:
         """Record a switch-to-switch link discovered by LLDP.
 
-        The edge is stored in the NetworkX graph with canonical ordering
-        (lower dpid first) so that ``nx.Graph`` sees it as undirected.
+        Each link is keyed by its canonical undirected 4-tuple so that
+        multiple parallel links between the same switch pair coexist.
         The port pair is removed from ``_edge_ports`` and recorded in
         ``_known_internal_ports`` to prevent future reclassification as edge.
         """
@@ -153,7 +153,15 @@ class TopologyGraph:
             a, b = min(link.src_dpid, link.dst_dpid), max(link.src_dpid, link.dst_dpid)
             port_a = link.src_port if link.src_dpid == a else link.dst_port
             port_b = link.dst_port if link.dst_dpid == b else link.src_port
-            self._graph.add_edge(a, b, dpid_a=a, port_a=port_a, dpid_b=b, port_b=port_b)
+            self._graph.add_edge(
+                a,
+                b,
+                key=link.undirected_key,
+                dpid_a=a,
+                port_a=port_a,
+                dpid_b=b,
+                port_b=port_b,
+            )
             self._edge_ports.discard((link.src_dpid, link.src_port))
             self._edge_ports.discard((link.dst_dpid, link.dst_port))
             self._known_internal_ports.add((link.src_dpid, link.src_port))
@@ -168,16 +176,39 @@ class TopologyGraph:
         )
 
     def remove_link(self, link: LinkKey) -> None:
-        """Remove a switch-to-switch link from the graph.
+        """Remove a specific switch-to-switch link from the graph.
 
-        The ports are deliberately *not* reverted to edge status.  If the
-        link is only temporarily gone (LLDP timeout), re-adding it as edge
-        would open a broadcast loop through the spanning tree.  The ports
-        stay in ``_known_internal_ports`` until the switch is removed.
+        Finds the edge whose port attributes match the given *link*, then
+        removes only that edge (by key), leaving other parallel links intact.
+        The ports are deliberately *not* reverted to edge status.
         """
         with self._lock:
-            if self._graph.has_edge(link.src_dpid, link.dst_dpid):
-                self._graph.remove_edge(link.src_dpid, link.dst_dpid)
+            target_key = None
+            for u, v, key, data in self._graph.edges(data=True, keys=True):
+                if data["dpid_a"] not in (link.src_dpid, link.dst_dpid):
+                    continue
+                if data["dpid_b"] not in (link.src_dpid, link.dst_dpid):
+                    continue
+                port_u = data["port_a"] if data["dpid_a"] == u else data["port_b"]
+                port_v = data["port_b"] if data["dpid_a"] == u else data["port_a"]
+                if (
+                    u == link.src_dpid
+                    and port_u == link.src_port
+                    and v == link.dst_dpid
+                    and port_v == link.dst_port
+                ):
+                    target_key = key
+                    break
+                if (
+                    v == link.src_dpid
+                    and port_v == link.src_port
+                    and u == link.dst_dpid
+                    and port_u == link.dst_port
+                ):
+                    target_key = key
+                    break
+            if target_key is not None:
+                self._graph.remove_edge(link.src_dpid, link.dst_dpid, key=target_key)
                 removed = True
             else:
                 removed = False
@@ -215,26 +246,49 @@ class TopologyGraph:
 
     @property
     def links(self) -> list[LinkKey]:
-        """Return one canonical link per undirected edge (smaller dpid first)."""
+        """Return one canonical link per multi-edge (smaller dpid first)."""
         with self._lock:
             result = []
-            for u, v, data in self._graph.edges(data=True):
+            for u, v, key, data in self._graph.edges(data=True, keys=True):
                 a, b = data["dpid_a"], data["dpid_b"]
                 port_a, port_b = data["port_a"], data["port_b"]
                 result.append(LinkKey(a, port_a, b, port_b))
             return result
 
     def get_port_for_peer(self, src_dpid: int, dst_dpid: int) -> Optional[int]:
-        """Return the port on *src_dpid* that connects to *dst_dpid*, or None."""
+        """Return the port on *src_dpid* that connects to *dst_dpid*, or None.
+
+        With MultiGraph there may be several parallel links; returns the port
+        from the first edge found (insertion order).
+        """
         with self._lock:
             if not self._graph.has_edge(src_dpid, dst_dpid):
                 return None
-            data = self._graph.edges[src_dpid, dst_dpid]
-            if data["dpid_a"] == src_dpid:
-                return data["port_a"]
-            return data["port_b"]
+            for key, data in self._graph[src_dpid][dst_dpid].items():
+                if data["dpid_a"] == src_dpid:
+                    return data["port_a"]
+                return data["port_b"]
+            return None
 
-    def copy_graph(self) -> nx.Graph:
+    def is_known_internal(self, dpid: int, port_no: int) -> bool:
+        """Return True if *(dpid, port_no)* was ever part of a link (even if torn)."""
+        with self._lock:
+            return (dpid, port_no) in self._known_internal_ports
+
+    def is_port_connected(self, dpid: int, port_no: int) -> bool:
+        """Return True if *port_no* on *dpid* currently has an active graph edge."""
+        with self._lock:
+            for u, v, key, data in self._graph.edges(data=True, keys=True):
+                if u == dpid or v == dpid:
+                    port_u = data["port_a"] if data["dpid_a"] == u else data["port_b"]
+                    port_v = data["port_b"] if data["dpid_a"] == u else data["port_a"]
+                    if (dpid == u and port_u == port_no) or (
+                        dpid == v and port_v == port_no
+                    ):
+                        return True
+            return False
+
+    def copy_graph(self) -> nx.MultiGraph:
         """Return a thread-safe deep copy of the underlying NetworkX graph."""
         with self._lock:
             return self._graph.copy()

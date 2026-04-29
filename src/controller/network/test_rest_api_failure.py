@@ -32,6 +32,16 @@ def _link_count(data: dict | None) -> int:
 
 
 def test_rest_api_during_failure():
+    """Validate REST API consistency during link failures.
+
+    Linear topology: h1—s1—s2—s3—h2 with backup s1—s3.
+
+    Checks:
+    - GET /topology reflects the link count decrease after a failure.
+    - GET /path returns correct state during failure and after recovery.
+    - GET /policy shows POLICY_BROKEN when a policy path link fails.
+    - Admin re-pinning (POST new path) recovers connectivity.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

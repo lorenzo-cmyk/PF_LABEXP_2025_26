@@ -83,6 +83,11 @@ class PolicyManager:
 
     @property
     def lock(self) -> threading.Lock:
+        """Return the lock guarding the policy table.
+
+        The REST API thread acquires this lock for read consistency
+        when iterating policies in ``GET /flows`` and ``GET /policy``.
+        """
         return self._lock
 
     # ── Read queries ─────────────────────────────────────────────────

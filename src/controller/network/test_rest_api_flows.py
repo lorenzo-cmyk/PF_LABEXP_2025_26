@@ -46,6 +46,17 @@ def _api_post(path: str, body: dict) -> tuple[int, dict | None]:
 
 
 def test_rest_api_flows():
+    """Validate GET /flows endpoint structure and content.
+
+    Ring topology: h1—s1—s2—s3—h2 with backup s1—s3.
+
+    Checks:
+    - Default flows are reported with priority 10, idle_timeout 30.
+    - Policy flows override default flows (priority 20, no timeout).
+    - Flow entries carry correct src_mac, dst_mac, plane metadata.
+    - Deleting a policy removes its flows from the API response
+      and reverts that pair to default entries.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

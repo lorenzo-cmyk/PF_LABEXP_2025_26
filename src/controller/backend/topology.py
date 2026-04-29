@@ -295,6 +295,11 @@ class TopologyGraph:
 
     @property
     def lock(self) -> threading.Lock:
+        """Return the reentrant lock guarding all graph state.
+
+        Callers acquiring this lock externally (e.g., REST API thread for
+        consistent multi-call reads) should use ``with graph.lock:``.
+        """
         return self._lock
 
 

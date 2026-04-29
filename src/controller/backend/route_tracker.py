@@ -47,6 +47,11 @@ class RouteTracker:
         )
 
     def remove_route(self, src_mac: str, dst_mac: str) -> None:
+        """Remove all link tracking for a (src_mac, dst_mac) pair.
+
+        Called during fault recovery (link down) and during host moves
+        to clear the stale route before a new path is computed.
+        """
         with self._lock:
             pair = (src_mac, dst_mac)
             links = self._pair_to_links.get(pair, [])
@@ -64,7 +69,12 @@ class RouteTracker:
             )
 
     def _remove_pair_unsafe(self, pair: tuple[str, str]) -> None:
-        """Remove tracking for a pair (must hold lock)."""
+        """Remove all link indices for *pair* — caller must hold ``self._lock``.
+
+        Pops the pair from ``_pair_to_links``, then removes it from every
+        link's reverse-index set.  Cleans up empty link-index entries to
+        prevent unbounded growth.
+        """
         old_links = self._pair_to_links.pop(pair, [])
         for lk in old_links:
             self._link_to_pairs[lk.undirected_key].discard(pair)
@@ -88,6 +98,11 @@ class RouteTracker:
         return pairs
 
     def links_for_pair(self, src_mac: str, dst_mac: str) -> list[LinkKey]:
+        """Return the list of ``LinkKey`` edges currently used by the pair.
+
+        Returns an empty list when the pair is not tracked (no route
+        has been installed yet or the route was purged).
+        """
         with self._lock:
             links = list(self._pair_to_links.get((src_mac, dst_mac), []))
         LOG.debug("RouteTracker: links for %s → %s = %d", src_mac, dst_mac, len(links))
@@ -95,7 +110,12 @@ class RouteTracker:
 
     @property
     def all_routes(self) -> dict[tuple[str, str], list[LinkKey]]:
-        """Return a snapshot of all tracked routes."""
+        """Return a snapshot of all tracked (pair → links) mappings.
+
+        Used by the REST API (``GET /flows``) and during fault recovery
+        to enumerate all routes that may be affected by a topology change.
+        Each pair's link list is a copy; the internal dict is not exposed.
+        """
         with self._lock:
             return {pair: list(links) for pair, links in self._pair_to_links.items()}
 

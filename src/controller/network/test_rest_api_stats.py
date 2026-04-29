@@ -28,6 +28,16 @@ def _api_get(path: str) -> tuple[int, dict | None]:
 
 
 def test_rest_api_stats():
+    """Validate GET /stats/ports endpoint structure and counter updates.
+
+    Linear topology: h1—s1—s2—s3—h2.
+
+    Checks:
+    - 503 when StatsCollector has not yet received any reply.
+    - Per-switch, per-port counter structure after stats arrive.
+    - Port counters (rx_packets, tx_packets, etc.) increase after traffic.
+    - last_updated timestamps advance between polls.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

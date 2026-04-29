@@ -34,7 +34,12 @@ class FlowInstaller:
         self._host_tracker: Optional[object] = None  # set by ForwardingPlane
 
     def register_dp(self, dp: Datapath) -> None:
-        """Store a datapath handle for later flow-mod operations."""
+        """Store a datapath handle for later flow-mod operations.
+
+        Called from ``Backend._switch_features_handler()`` when a switch
+        completes the OpenFlow handshake.  The datapath is needed to
+        send ``OFPFlowMod`` and ``OFPPacketOut`` messages to the switch.
+        """
         self._datapaths[dp.id] = dp
         LOG.info(
             "FlowInstaller: registered datapath dpid=%s | total=%d",
@@ -43,7 +48,14 @@ class FlowInstaller:
         )
 
     def unregister_dp(self, dpid: int) -> None:
-        """Forget a datapath (e.g., switch disconnected)."""
+        """Forget a datapath (e.g., switch disconnected).
+
+        Once unregistered, no further ``OFPFlowMod`` or ``OFPPacketOut``
+        messages will be sent to that switch.  Existing flows on the
+        switch are *not* removed — the switch will eventually time them
+        out or the surviving switches' ``delete_flows_for_mac()`` calls
+        during ``purge_switch()`` will not target this dpid.
+        """
         self._datapaths.pop(dpid, None)
         LOG.info(
             "FlowInstaller: unregistered datapath dpid=%s | total=%d",
@@ -53,11 +65,21 @@ class FlowInstaller:
 
     @property
     def datapaths(self) -> dict[int, Datapath]:
-        """Return the full dict of connected datapaths (for external polling)."""
+        """Return a snapshot of all connected datapaths (for external polling).
+
+        Used by ``StatsCollector`` to iterate all switches when sending
+        ``OFPPortStatsRequest``.  The internal dict is shallow-copied so
+        callers can safely iterate without holding a lock.
+        """
         return dict(self._datapaths)
 
     def get_dp(self, dpid: int) -> Optional[Datapath]:
-        """Return the Datapath handle for *dpid*, or None if not connected."""
+        """Return the Datapath handle for *dpid*, or None if not connected.
+
+        Used by ``Backend`` during stale-disconnect detection: compares
+        the current registered datapath with the one firing the DEAD
+        event to decide whether to ignore the disconnect.
+        """
         return self._datapaths.get(dpid)
 
     # ── Baseline drop rules ──────────────────────────────────────────────

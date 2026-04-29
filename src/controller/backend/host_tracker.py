@@ -143,10 +143,17 @@ class HostTracker:
                     "port": entry.location.port,
                 }
                 for mac, entry in self._table.items()
+                if entry.ips
             ]
 
     @property
     def hosts(self) -> dict[str, HostLocation]:
-        """Return a snapshot of all MAC→location mappings."""
+        """Return a snapshot of all MAC→location mappings.
+
+        Used by ``Backend`` during switch-disconnect cleanup to iterate
+        over all known hosts and identify those attached to the dead
+        switch.  The returned dict is a copy; the internal table is
+        not exposed.
+        """
         with self._lock:
             return {mac: entry.location for mac, entry in self._table.items()}

@@ -61,6 +61,12 @@ class StatsCollector:
 
     @property
     def lock(self) -> threading.Lock:
+        """Return the lock guarding the shared stats dict.
+
+        The REST API thread acquires this lock when calling
+        ``get_snapshot()`` to ensure a consistent view of port counters
+        across all switches.
+        """
         return self._lock
 
     @property
@@ -69,6 +75,16 @@ class StatsCollector:
             return self._received_first_reply
 
     def set_datapaths_cb(self, cb: Callable[[], list["Datapath"]]) -> None:
+        """Register a callable that returns the list of connected datapaths.
+
+        The callback is invoked each poll cycle (every ``poll_interval``
+        seconds) to fetch the current set of switches.  Wired by
+        ``Backend.__init__()``::
+
+            stats_collector.set_datapaths_cb(
+                lambda: list(self.flow_installer.datapaths.values())
+            )
+        """
         self._datapaths_cb = cb
 
     def _poll_loop(self) -> None:

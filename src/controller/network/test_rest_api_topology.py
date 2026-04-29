@@ -28,6 +28,16 @@ def _api_get(path: str) -> tuple[int, dict | None]:
 
 
 def test_rest_api_topology():
+    """Validate GET /topology and GET /path endpoints.
+
+    Ring topology: h1—s1—s2—s3—h2 with backup s1—s3.
+
+    Checks:
+    - /topology returns switches, links, hosts with correct structure.
+    - /path returns hop chain for known hosts, 404 for unknown.
+    - No phantom switches, hosts, or cross-switch link references.
+    - Hop entries have valid dpids and non-negative port numbers.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

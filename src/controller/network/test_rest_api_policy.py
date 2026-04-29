@@ -62,6 +62,21 @@ def _api_delete(path: str) -> tuple[int, dict | None]:
 
 
 def test_rest_api_policy():
+    """Validate full policy CRUD lifecycle via REST API.
+
+    Ring topology: h1—s1—s2—s3—h2 with backup s1—s3.
+
+    Checks:
+    - GET /policy returns UNSPECIFIED for a pair with no pinned path.
+    - POST /policy with a valid path installs it and returns POLICY_ACTIVE.
+    - GET /path shows policy plane after install.
+    - DELETE /policy removes the path and reverts to UNSPECIFIED.
+    - DELETE on non-existent policy returns 404.
+    - Invalid paths return 400 (wrong port, non-contiguous, empty,
+      missing fields, unparseable dpid).
+    - Same src/dst MAC returns 409.
+    - Unknown MAC returns 404.
+    """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)

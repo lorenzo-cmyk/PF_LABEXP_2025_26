@@ -1,0 +1,10 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Lab Experience SDN Project - Backend (os-ken Controller)"
+requires-python = ">=3.14.4"
+dependencies = [
+    "fastapi[standard]>=0.136.0",
+    "networkx>=3.6.1",
+    "os-ken>=4.1.1",
+]

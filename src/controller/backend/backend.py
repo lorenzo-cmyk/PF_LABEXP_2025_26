@@ -663,6 +663,7 @@ class Backend(app_manager.OSKenApp):
             body.serial_num,
         )
         self.switch_registry.register(dp.id, body)
+        self._try_init_ports(dp)  # re-try: dp.ports is populated by now
         self._install_baseline(dp)
         self._cancel_desc_fallback(dp.id)
 
@@ -673,6 +674,7 @@ class Backend(app_manager.OSKenApp):
         self.switch_registry.set_unknown(dpid)
         dp = self.flow_installer.get_dp(dpid)
         if dp:
+            self._try_init_ports(dp)
             self._install_baseline(dp)
         LOG.info("Backend: DESC fallback for dpid=%s — using default", hex(dpid))
 

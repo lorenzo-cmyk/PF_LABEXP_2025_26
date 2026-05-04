@@ -126,7 +126,7 @@ sudo ./test_runner.sh edge            # all edge case tests
 | `test_edge_graph_restore.py` | The "better path returns" scenario: when a link comes back UP after being DOWN, the graph and path cache must immediately use it if the backup path subsequently fails. |
 | `test_edge_host_relocate.py` | Host mobility: a device unplugs from one switch and plugs into another (same MAC, IP moved). Edge-port-down purge must clean stale flows. |
 | `test_edge_idle_timeout.py` | Flow expiry after 30s idle — the controller must fully re-install flows (no OpenFlow notification for idle timeout). |
-| `test_edge_k4_mesh.py` | K4 full-mesh (4 switches, 6 links) — spanning-tree must prevent broadcast storms without breaking connectivity. |
+| `test_edge_k4_mesh.py` | K4 full-mesh (4 switches, 6 links) — proxy-ARP and zero-trust broadcast drop prevent storms in a heavily connected topology. |
 | `test_edge_link_restore_cache.py` | Stale path cache after link recovery — no manual invalidation on link up. A previously-cached suboptimal path must not persist after a better path becomes available. |
 | `test_edge_mobility_roundtrip.py` | Round-trip host mobility: a host moves from s1→s3, then back s3→s1. The second purge must clean stale flows on the second switch. |
 | `test_edge_policy_bidirectional.py` | Policy installs flows in both directions. Reverse direction mirrors the forward path. Link failure cleanup removes flows in both directions. |

@@ -4,7 +4,8 @@ Usage:
     sudo python ring.py
 
 Starts Mininet with a remote os-ken controller on localhost:6653.
-Tests that the controller prevents broadcast storms on ring topologies.
+The controller uses proxy-ARP and zero-trust broadcast drop so ring
+topologies are safe without spanning-tree.
 """
 
 from mininet.net import Mininet

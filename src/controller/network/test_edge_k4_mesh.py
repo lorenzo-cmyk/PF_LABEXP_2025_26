@@ -10,8 +10,10 @@ def test_k4_mesh_storm_resilience():
     r"""
     Edge Case: K4 full mesh storm resilience.
 
-    Tests if the spanning-tree algorithm can handle a highly connected
-    graph (6 links for 4 switches) without creating broadcast storms.
+    Tests that a highly connected graph (6 links for 4 switches) works
+    without broadcast storms.  The controller uses proxy-ARP (no ARP
+    flooding) and zero-trust broadcast/multicast drop, so no physical
+    spanning-tree is needed.
 
     Topology: K4 full mesh
         h1 - s1 --- s2 - h2
@@ -24,9 +26,9 @@ def test_k4_mesh_storm_resilience():
     Each switch has one directly attached host.
 
     Phases:
-    1. K4 mesh ping-all (ST must prune 3 of 6 links).
-    2. Slice graph (s1-s2 and s3-s4 down), forcing ST reconvergence.
-    3. Re-test after massive ST reconvergence.
+    1. K4 mesh ping-all (zero-trust + proxy-ARP prevent storms).
+    2. Take down s1-s2 and s3-s4, forcing path recomputation.
+    3. Re-test after topology change.
     """
     subprocess.run(["mn", "-c"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     net = Mininet(controller=RemoteController, switch=OVSSwitch, build=False)
@@ -56,20 +58,18 @@ def test_k4_mesh_storm_resilience():
     info("*** Pinging to learn hosts (may fail — teaches controller MAC/IP)\n")
     net.pingAll()
 
-    info("*** Waiting for discovery (Spanning tree must prune 3 links logically)\n")
+    info("*** Waiting for topology discovery\n")
     time.sleep(5)
 
-    info("*** 1. K4 Mesh PingAll (If ST loops exist, ARP storms will kill this)\n")
+    info("*** 1. K4 Mesh PingAll (zero-trust + proxy-ARP prevent storms)\n")
     loss_full = net.pingAll()
 
-    info(
-        "*** 2. Slicing graph: taking down s1-s2 and s3-s4 (forcing drastically new ST)\n"
-    )
+    info("*** 2. Slicing graph: taking down s1-s2 and s3-s4\n")
     net.configLinkStatus("s1", "s2", "down")
     net.configLinkStatus("s3", "s4", "down")
     time.sleep(3)
 
-    info("*** 3. Re-test pingAll after massive Spanning Tree reconvergence\n")
+    info("*** 3. Re-test pingAll after topology change\n")
     loss_sliced = net.pingAll()
 
     net.stop()

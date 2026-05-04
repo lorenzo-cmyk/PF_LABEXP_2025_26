@@ -4,13 +4,15 @@ Gaps between this controller and HPE ArubaOS-Switch OpenFlow 1.3 implementation,
 extracted from *HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03*
 (part number 5200-2934a, May 2017, edition 2).
 
-## 1. Multi-Table Pipeline Is Mandatory — Controller Only Uses Table 0
+## 1. Multi-Table Pipeline Is Mandatory — Controller Only Partially Handles It
 
-**Impact: All traffic is silently dropped on HPE switches.**
+**Impact: Partial — forwarding flows now use table 100, but the full pipeline is not managed.**
 
-The controller installs every flow on table 0 with a single table-miss rule
-(priority 0, all wildcards → `OUTPUT:CONTROLLER`). This works on OVS and ZodiacFX
-because both expose a flat single-table model by default.
+The controller detects HPE switches at connect time (via `OFPMP_DESC` vendor
+classification in `SwitchRegistry`) and installs forwarding flows, table-miss,
+and drop rules on **table 100** (the Policy Engine table) instead of table 0.
+This avoids table 0 entirely — OVS and ZodiacFX still use table 0 since they
+expose a flat single-table model.
 
 HPE OpenFlow 1.3 exposes a **multi-table pipeline** whose structure depends on the
 configured pipeline model:
@@ -32,14 +34,13 @@ flows on table 0 are bypassed. The table-miss rule (`OUTPUT:CONTROLLER`) is
 never reached.
 
 ```
-     Controller installs here      Switch auto-rules jump here
-     ┌──────────────────────┐      ┌──────────────────────────┐
-     │  Table 0             │      │  Table 50 / 100 / 200    │
-     │  ┌─────────────────┐ │      │                          │
-     │  │ table-miss:     │ │      │  table-miss default:     │
-     │  │ → CONTROLLER ✗  │─┼──────┼→ DROP                   │
-     │  └─────────────────┘ │      │                          │
-     └──────────────────────┘      └──────────────────────────┘
+     Switch auto-rules            Controller installs here
+     ┌─────────────────────┐      ┌──────────────────────────┐
+     │  Table 0 (Start)    │      │  Table 100 (Policy Eng)  │
+     │  ┌────────────────┐ │      │                          │
+     │  │ GoTo table 100 │─┼──────┼→ flows installed here    │
+     │  └────────────────┘ │      │  table-miss: → CONTROLLER│
+     └─────────────────────┘      └──────────────────────────┘
 ```
 
 **Fix required**: Use the multi-table pipeline. Install forwarding flows on
@@ -376,11 +377,12 @@ Sending them returns `OFPET_PORT_MOD_FAILED`.
 
 | Priority | Change                                                           |
 |:---------|:-----------------------------------------------------------------|
-| **P0**   | Detect HPE switches (DPID range, switch description)             |
-| **P0**   | Query `OFPMP_TABLE_FEATURES` to discover the pipeline            |
-| **P0**   | Install per-table table-miss rules (GoTo chain for all tables, OUTPUT:CONTROLLER on last) |
-| **P0**   | Move forwarding flows from table 0 to table 100+                 |
-| **P0**   | Never delete table 0 auto-added GoTo rules                       |
+| **P0**   | ~~Detect HPE switches~~ — done via `OFPMP_DESC` + `SwitchRegistry._classify()` |
+| **P0**   | ~~Move forwarding flows from table 0 to table 100+~~ — done via `_main_table()` |
+| **P0**   | Query `OFPMP_TABLE_FEATURES` to discover the full pipeline        |
+| **P0**   | Install per-table table-miss rules (GoTo chain for tables beyond 100, OUTPUT:CONTROLLER on last) |
+| **P0**   | Never delete table 0 auto-added GoTo rules (currently respected: baseline rules only touch table 100) |
+| **P1**   | Enforce minimum `idle_timeout ≥ 24 s` on HPE switches            |
 | **P1**   | Enforce minimum `idle_timeout ≥ 24 s` on HPE switches            |
 | **P2**   | Handle VLAN tag presence/absence per instance mode               |
 | **P2**   | Do not use `OFPP_ALL/LOCAL/TABLE/IN_PORT`                        |

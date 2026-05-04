@@ -77,8 +77,7 @@ Backend (os-ken entry point — event dispatch only)
   with identical links.
 - Flows are installed **sink-to-source** to minimise the inconsistency window.
 - Policy flows have **priority 20, no idle timeout** (sticky); default flows have
-  **priority 10, 30 s idle timeout**. Flood rules use priority 1. Table-miss
-  entries use priority 0.
+  **priority 10, 30 s idle timeout**. Table-miss entries use priority 0.
 - FastAPI runs in a dedicated `threading.Thread` (not an eventlet greenthread)
   to isolate its asyncio event loop from os-ken's eventlet loop.
 
@@ -92,9 +91,17 @@ Backend (os-ken entry point — event dispatch only)
 2. Adds the switch node to TopologyGraph.
 3. Attempts port registration from `dp.ports` (may be empty at CONFIG time;
    lazily retried on first packet-in).
-4. Installs table-miss flow (priority 0 → CONTROLLER).
-5. Installs drop rules for LLDP, ARP broadcast, and IPv4 multicast.
-6. Invalidates path cache (topology may have changed while disconnected).
+4. Requests switch description via `OFPMP_DESC` to classify vendor (OVS vs
+   HPE vs Zodiac FX).
+5. On DESC reply (or 2 s timeout fallback):
+   - Installs the table-miss flow (priority 0 → CONTROLLER) on the switch's
+     primary flow table (table 0 for OVS/Zodiac, table 100 for HPE).
+   - Installs permanent high-priority drop rules: IPv6 (ethertype 0x86DD)
+     and IPv4 multicast (dst MAC 01:00:5e/9, OVS/Zodiac only — HPE table 100
+     rejects masked eth_dst matches). LLDP and ARP are *not* dropped in
+     hardware — LLDP is handled by os-ken's built-in Switches app and ARP by
+     the controller's proxy-ARP handler.
+6. Invalidates path cache.
 
 ### Switch disconnects (`EventOFPStateChange` → DEAD_DISPATCHER)
 
@@ -162,8 +169,9 @@ Backend (os-ken entry point — event dispatch only)
    - If destination is unknown in HostTracker → drop.
    - If the packet arrived at an intermediate switch (not the source's switch)
      → skip install (existing flows or timeout will deliver).
-   - If source and destination are on the same switch → installs direct edge
-     flows (both directions, priority 10, 30 s idle timeout).
+    - If source and destination are on the same switch → installs direct edge
+      flows (both directions, priority 10, 30 s idle timeout) and tracks the
+      pair in RouteTracker (so `GET /flows` includes them).
    - If a **policy path** is ACTIVE for the pair → installs high-priority
      symmetric flows along the pinned path (priority 20, no idle timeout).
    - If a policy exists but is **BROKEN** → drop (no auto-fallback).
@@ -311,22 +319,28 @@ dump from the switches.
 
 ### `GET /topology`
 
-Returns the full live graph: switches, inter-switch links, known hosts, and the
-current spanning-tree edges.
+Returns the full live graph: switches (with vendor metadata), inter-switch links,
+and known hosts.
 
 **200**:
 
 ```json
 {
-  "switches": [1, 2, 3],
+  "switches": [
+    {
+      "dpid": 1,
+      "vendor": "Open vSwitch",
+      "hw_desc": "Open vSwitch",
+      "sw_desc": "2.17.0",
+      "num_ports": 4,
+      "main_table": 0
+    }
+  ],
   "links": [
     { "src_dpid": 1, "src_port": 2, "dst_dpid": 2, "dst_port": 1 }
   ],
   "hosts": [
-    { "mac": "00:00:00:00:00:01", "dpid": 1, "port": 1 }
-  ],
-  "spanning_tree": [
-    { "src_dpid": 1, "src_port": 2, "dst_dpid": 2, "dst_port": 1 }
+    { "mac": "00:00:00:00:00:01", "ips": ["10.0.0.1"], "dpid": 1, "port": 1 }
   ]
 }
 ```
